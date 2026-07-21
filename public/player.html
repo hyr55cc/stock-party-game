@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<title>بورصة الأصدقاء</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root{
+    --bg:#000000; --surface:#0d0f10; --surface2:#16181a; --border:#232629;
+    --text:#f5f6f7; --text-dim:#8a9099; --text-dim2:#5b6167;
+    --green:#00c805; --green-dim:#00c80520; --red:#ff5252; --red-dim:#ff525220;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{
+    margin:0; font-family:'Inter',-apple-system,'Segoe UI',sans-serif; background:var(--bg); color:var(--text);
+    min-height:100vh; padding-bottom:40px;
+  }
+  .mono{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; }
+  .hidden{ display:none !important; }
+  .wrap{ padding:16px; max-width:480px; margin:0 auto; }
+
+  /* JOIN */
+  #join{ text-align:center; padding-top:12vh; }
+  .brand{ display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:10px; }
+  .brand .dot{ width:9px; height:9px; border-radius:50%; background:var(--green); box-shadow:0 0 10px var(--green); }
+  .brand span{ font-size:.95em; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
+  #join h1{ color:var(--text); font-size:1.8em; margin:2px 0 6px; font-weight:800; }
+  #join p{ color:var(--text-dim); margin-bottom:6px; }
+  #join input{
+    width:100%; padding:15px; margin-top:12px; border-radius:14px; border:1px solid var(--border);
+    background:var(--surface); color:#fff; font-size:1.1em; text-align:center; font-family:inherit;
+  }
+  #join input:focus{ outline:none; border-color:var(--green); }
+  #join button{
+    width:100%; margin-top:16px; padding:15px; border-radius:14px; border:none;
+    background:var(--green); color:#00230a; font-size:1.1em; font-weight:700;
+  }
+  #joinErr{ color:var(--red); margin-top:12px; min-height:20px; font-size:.9em; }
+  #waiting{ text-align:center; padding-top:22vh; color:var(--text-dim); }
+  #waiting .spinner{ width:34px; height:34px; border:3px solid var(--border); border-top-color:var(--green); border-radius:50%; margin:0 auto 16px; animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* HEADER */
+  .hdr{ padding:6px 4px 18px; }
+  .hdr .lbl{ color:var(--text-dim); font-size:.85em; font-weight:600; }
+  .hdr .val{ font-size:2.5em; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
+  .hdr .gainrow{ display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .gain-pill{ font-size:.95em; font-weight:700; padding:3px 10px; border-radius:8px; }
+  .gain-pill.up{ background:var(--green-dim); color:var(--green); } .gain-pill.down{ background:var(--red-dim); color:var(--red); } .gain-pill.flat{ background:var(--surface2); color:var(--text-dim); }
+  .hdr .cash{ color:var(--text-dim); font-size:.9em; }
+  .hdr .timer{ margin-top:12px; display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--border); padding:6px 14px; border-radius:10px; font-size:.95em; color:var(--text-dim); }
+  .hdr .timer .tval{ color:var(--text); font-weight:700; }
+  .hdr .timer.warn .tval{ color:var(--red); }
+
+  h4.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.8em; letter-spacing:.08em; font-weight:600; margin:18px 4px 8px; }
+
+  .stock-row{
+    display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:.1s;
+  }
+  .stock-row:active{ transform:scale(.98); }
+  .stock-row .ico-badge{ width:38px; height:38px; border-radius:11px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:1.2em; flex-shrink:0; }
+  .stock-row .mid{ flex:1; min-width:0; }
+  .stock-row .nm{ font-size:1.02em; font-weight:600; }
+  .stock-row .hold{ font-size:.8em; color:var(--text-dim); margin-top:1px; }
+  .stock-row .spark{ width:56px; height:28px; flex-shrink:0; }
+  .stock-row .right{ text-align:left; flex-shrink:0; min-width:74px; }
+  .stock-row .pr{ font-weight:700; font-size:1.02em; }
+  .stock-row .chg{ font-size:.82em; font-weight:600; margin-top:1px; }
+  .up{ color:var(--green); } .down{ color:var(--red); }
+  .frozen{ opacity:.4; }
+  .frozen-badge{ font-size:.72em; color:#ffb020; margin-top:1px; }
+
+  /* MODAL */
+  #modalBg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:flex-end; z-index:50; backdrop-filter:blur(2px); }
+  #modal{ background:var(--surface); width:100%; border-radius:24px 24px 0 0; padding:22px 20px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; }
+  .modal-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+  .modal-hdr .ico-badge{ width:34px; height:34px; border-radius:10px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:1.1em; }
+  .modal-hdr .titles{ flex:1; }
+  .modal-hdr h3{ margin:0; font-size:1.15em; }
+  .modal-hdr .mp{ color:var(--text-dim); font-size:.85em; }
+  #detailChart{ width:100%; height:90px; margin:14px 0 6px; display:block; }
+  .holding-line{ display:flex; justify-content:space-between; font-size:.85em; color:var(--text-dim); margin-bottom:16px; }
+
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; background:var(--surface2); border-radius:12px; padding:4px; }
+  .tabs button{ flex:1; padding:10px; border-radius:9px; border:none; background:transparent; color:var(--text-dim); font-size:1em; font-weight:700; font-family:inherit; }
+  .tabs button.active{ background:var(--text); color:#000; }
+  #amountLbl{ text-align:center; font-size:2.2em; font-weight:800; margin:6px 0 4px; }
+  #amountSub{ text-align:center; color:var(--text-dim); font-size:.85em; margin-bottom:14px; }
+  .quick{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 18px; }
+  .quick button{ flex:1; min-width:70px; padding:11px; border-radius:11px; border:1px solid var(--border); background:var(--surface2); color:#fff; font-family:inherit; font-weight:600; font-size:.95em; }
+  #confirmBtn{ width:100%; padding:16px; border-radius:14px; border:none; color:#00230a; font-weight:700; font-size:1.05em; }
+  #confirmBtn.sellMode{ color:#2a0303; }
+  #closeModal{ width:100%; padding:10px; margin-top:8px; background:none; border:none; color:var(--text-dim); font-family:inherit; font-size:.95em; }
+
+  /* TOAST */
+  #toastArea{ position:fixed; top:14px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:99; padding:0 16px; }
+  .toast{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 18px; font-size:.9em; max-width:420px; text-align:center; animation:fadeInOut 4s ease forwards; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  @keyframes fadeInOut{ 0%{opacity:0; transform:translateY(-8px);} 10%{opacity:1; transform:translateY(0);} 85%{opacity:1;} 100%{opacity:0;} }
+
+  #end{ text-align:center; padding-top:12vh; }
+  #end h1{ color:var(--text); font-size:1.9em; font-weight:800; }
+  .myrank-card{ background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:22px; margin:22px auto; max-width:320px; }
+  .myrank-card .big{ font-size:2.6em; font-weight:800; }
+  .myrank-card .lbl{ color:var(--text-dim); font-size:.9em; margin-top:4px; }
+  #fullResults{ max-width:420px; margin:0 auto; text-align:right; }
+  .final-row{ display:flex; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); font-size:.98em; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <!-- JOIN -->
+  <div id="join">
+    <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
+    <h1>📈 بورصة الأصدقاء</h1>
+    <p>أدخل اسمك وكود اللعبة من شاشة التلفزيون</p>
+    <input id="nameInput" placeholder="اسمك" maxlength="16" />
+    <input id="codeInput" placeholder="كود اللعبة (4 أرقام)" maxlength="4" inputmode="numeric" />
+    <button id="joinBtn">انضمام</button>
+    <div id="joinErr"></div>
+  </div>
+
+  <div id="waiting" class="hidden"><div class="spinner"></div>بانتظار بدء المضيف للعبة...</div>
+
+  <!-- GAME -->
+  <div id="game" class="hidden">
+    <div class="hdr">
+      <div class="lbl">قيمة محفظتك</div>
+      <div class="val mono" id="myValue">$100,000</div>
+      <div class="gainrow">
+        <span class="gain-pill flat mono" id="myGainPill">0.00%</span>
+        <span class="cash mono" id="myCash">نقد: $100,000</span>
+      </div>
+      <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
+    </div>
+    <h4 class="section-lbl">السوق</h4>
+    <div id="stocksList"></div>
+  </div>
+
+  <!-- END -->
+  <div id="end" class="hidden">
+    <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
+    <h1>🏁 انتهت اللعبة</h1>
+    <div class="myrank-card">
+      <div class="big mono" id="myRankNum">#-</div>
+      <div class="lbl" id="myRankVal">$0</div>
+    </div>
+    <h4 class="section-lbl">النتائج الكاملة</h4>
+    <div id="fullResults"></div>
+  </div>
+</div>
+
+<div id="toastArea"></div>
+
+<div id="modalBg" class="hidden">
+  <div id="modal">
+    <div class="modal-hdr">
+      <div class="ico-badge" id="modalIco"></div>
+      <div class="titles">
+        <h3 id="modalTitle">—</h3>
+        <div class="mp mono" id="modalPrice">$0</div>
+      </div>
+    </div>
+    <canvas id="detailChart"></canvas>
+    <div class="holding-line"><span id="holdQty">تملك: 0</span><span id="holdVal">$0</span></div>
+    <div class="tabs">
+      <button id="tabBuy" class="active">شراء</button>
+      <button id="tabSell">بيع</button>
+    </div>
+    <div id="amountLbl">$0</div>
+    <div id="amountSub">&nbsp;</div>
+    <div class="quick" id="quickButtons"></div>
+    <button id="confirmBtn">تأكيد</button>
+    <button id="closeModal">إغلاق</button>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let myCode = null, myToken = null, myState = null, latestState = null;
+let modalStock = null, modalAction = 'buy', modalAmount = 0;
+let attemptingRejoin = false;
+
+const params = new URLSearchParams(location.search);
+if (params.get('code')) document.getElementById('codeInput').value = params.get('code');
+
+// try silent rejoin
+const savedToken = localStorage.getItem('spg_token');
+const savedCode = localStorage.getItem('spg_code');
+if (savedToken && savedCode) {
+  attemptingRejoin = true;
+  document.getElementById('join').classList.add('hidden');
+  document.getElementById('waiting').classList.remove('hidden');
+  myCode = savedCode; myToken = savedToken;
+  socket.emit('player:rejoin', { code: savedCode, token: savedToken });
+}
+
+document.getElementById('joinBtn').addEventListener('click', doJoin);
+document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
+
+function doJoin(){
+  const name = document.getElementById('nameInput').value.trim();
+  const code = document.getElementById('codeInput').value.trim();
+  if (!name) { showJoinErr('اكتب اسمك أولاً'); return; }
+  if (!/^\d{4}$/.test(code)) { showJoinErr('كود اللعبة يجب أن يكون 4 أرقام'); return; }
+  myCode = code;
+  socket.emit('player:join', { code, name });
+}
+function showJoinErr(msg){ document.getElementById('joinErr').textContent = msg; }
+
+socket.on('errorMsg', msg => {
+  if (!document.getElementById('join').classList.contains('hidden')) { showJoinErr(msg); return; }
+  if (attemptingRejoin) {
+    attemptingRejoin = false;
+    localStorage.removeItem('spg_token'); localStorage.removeItem('spg_code');
+    document.getElementById('waiting').classList.add('hidden');
+    document.getElementById('join').classList.remove('hidden');
+    return;
+  }
+  toast(msg);
+});
+
+socket.on('player:joined', ({ code, name, token }) => {
+  attemptingRejoin = false;
+  myCode = code; myToken = token;
+  localStorage.setItem('spg_token', token);
+  localStorage.setItem('spg_code', code);
+  document.getElementById('join').classList.add('hidden');
+  document.getElementById('waiting').classList.remove('hidden');
+});
+
+function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+function fmtTime(ms){
+  const totalSec = Math.max(0, Math.floor(ms/1000));
+  const m = Math.floor(totalSec/60), s = totalSec%60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+function drawSparkline(canvas, data, color){
+  if (!canvas || !data || data.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const min = Math.min(...data), max = Math.max(...data), range = (max-min)||1;
+  const pad = 3;
+  const pts = data.map((v,i) => [ (i/(data.length-1))*w, h-pad-((v-min)/range)*(h-pad*2) ]);
+  ctx.beginPath();
+  pts.forEach(([x,y],i) => i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.stroke();
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, color+'35'); grad.addColorStop(1, color+'00');
+  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+}
+
+socket.on('state:update', state => {
+  latestState = state;
+  if (state.status === 'running') {
+    document.getElementById('waiting').classList.add('hidden');
+    document.getElementById('join').classList.add('hidden');
+    document.getElementById('game').classList.remove('hidden');
+    document.getElementById('end').classList.add('hidden');
+    const tb = document.getElementById('timerBox');
+    document.getElementById('myTimer').textContent = fmtTime(state.timeLeftMs);
+    tb.classList.toggle('warn', state.timeLeftMs < 60000);
+    renderStocks(state);
+    if (!document.getElementById('modalBg').classList.contains('hidden') && modalStock) {
+      const fresh = state.stocks.find(s => s.id === modalStock.id);
+      if (fresh) { modalStock = fresh; updateModalPrice(); }
+    }
+  } else if (state.status === 'lobby' && !document.getElementById('game').classList.contains('hidden')) {
+    document.getElementById('game').classList.add('hidden');
+    document.getElementById('waiting').classList.remove('hidden');
+  } else if (state.status === 'ended') {
+    renderEnd(state.players);
+  }
+});
+
+function renderEnd(results){
+  document.getElementById('waiting').classList.add('hidden');
+  document.getElementById('join').classList.add('hidden');
+  document.getElementById('game').classList.add('hidden');
+  document.getElementById('end').classList.remove('hidden');
+  const idx = results.findIndex(p => myState && p.name === myState.name);
+  document.getElementById('myRankNum').textContent = idx>=0 ? '#'+(idx+1) : '#-';
+  document.getElementById('myRankVal').textContent = idx>=0 ? fmtMoney(results[idx].value) : '';
+  document.getElementById('fullResults').innerHTML = results.map((p,i) => `
+    <div class="final-row"><span>${i+1}. ${p.name}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+}
+
+socket.on('player:update', p => {
+  if (!p) return;
+  myState = p;
+  document.getElementById('myValue').textContent = fmtMoney(p.value);
+  document.getElementById('myCash').textContent = 'نقد: ' + fmtMoney(p.cash);
+  const pill = document.getElementById('myGainPill');
+  pill.textContent = (p.gainPct>0?'+':'') + p.gainPct + '%';
+  pill.className = 'gain-pill mono ' + (p.gainPct>0?'up':(p.gainPct<0?'down':'flat'));
+  if (latestState && latestState.status === 'running') renderStocks(latestState);
+});
+
+function renderStocks(state){
+  const list = document.getElementById('stocksList');
+  list.innerHTML = state.stocks.map(s => {
+    const qty = myState && myState.holdings[s.id] ? myState.holdings[s.id] : 0;
+    const frozen = myState && myState.frozenStock === s.id;
+    return `<div class="stock-row ${frozen?'frozen':''}" onclick="openModal('${s.id}')">
+      <div class="ico-badge">${s.icon}</div>
+      <div class="mid">
+        <div class="nm">${s.name}</div>
+        ${qty>0 ? `<div class="hold mono">${qty.toFixed(3)} · ${fmtMoney(qty*s.price)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
+      </div>
+      <div class="spark"><canvas id="rowspark-${s.id}"></canvas></div>
+      <div class="right">
+        <div class="pr mono">${fmtMoney(s.price)}</div>
+        <div class="chg mono ${s.changePct>=0?'up':'down'}">${s.changePct>=0?'+':''}${s.changePct}%</div>
+      </div>
+    </div>`;
+  }).join('');
+  state.stocks.forEach(s => drawSparkline(document.getElementById('rowspark-'+s.id), s.history, s.changePct>=0?'#00c805':'#ff5252'));
+}
+
+function openModal(stockId){
+  modalStock = latestState.stocks.find(s => s.id === stockId);
+  modalAction = 'buy'; modalAmount = 0;
+  document.getElementById('modalIco').textContent = modalStock.icon;
+  document.getElementById('modalTitle').textContent = modalStock.name;
+  updateModalPrice();
+  setTab('buy');
+  document.getElementById('modalBg').classList.remove('hidden');
+}
+function updateModalPrice(){
+  document.getElementById('modalPrice').textContent = fmtMoney(modalStock.price) + '  ' + (modalStock.changePct>=0?'▲':'▼') + Math.abs(modalStock.changePct) + '%';
+  document.getElementById('modalPrice').className = 'mp mono ' + (modalStock.changePct>=0?'up':'down');
+  drawSparkline(document.getElementById('detailChart'), modalStock.history, modalStock.changePct>=0?'#00c805':'#ff5252');
+  const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
+  document.getElementById('holdQty').textContent = 'تملك: ' + qty.toFixed(3);
+  document.getElementById('holdVal').textContent = fmtMoney(qty * modalStock.price);
+}
+document.getElementById('closeModal').addEventListener('click', () => document.getElementById('modalBg').classList.add('hidden'));
+document.getElementById('tabBuy').addEventListener('click', () => setTab('buy'));
+document.getElementById('tabSell').addEventListener('click', () => setTab('sell'));
+
+function setTab(action){
+  modalAction = action; modalAmount = 0;
+  document.getElementById('tabBuy').classList.toggle('active', action==='buy');
+  document.getElementById('tabSell').classList.toggle('active', action==='sell');
+  document.getElementById('amountLbl').textContent = '$0';
+  const confirmBtn = document.getElementById('confirmBtn');
+  confirmBtn.textContent = action==='buy' ? 'تأكيد الشراء' : 'تأكيد البيع';
+  confirmBtn.style.background = action==='buy' ? 'var(--green)' : 'var(--red)';
+  confirmBtn.classList.toggle('sellMode', action==='sell');
+  const qb = document.getElementById('quickButtons');
+  const sub = document.getElementById('amountSub');
+  if (action === 'buy') {
+    const cash = myState ? myState.cash : 0;
+    sub.textContent = 'نقد متاح: ' + fmtMoney(cash);
+    qb.innerHTML = [['$1,000',1000],['$5,000',5000],['$10,000',10000],['الكل',cash]]
+      .map(([lbl,val]) => `<button onclick="setAmount(${val})">${lbl}</button>`).join('');
+  } else {
+    const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
+    const val = qty * modalStock.price;
+    sub.textContent = 'قيمة ما تملك: ' + fmtMoney(val);
+    qb.innerHTML = [['25%',val*0.25],['50%',val*0.5],['75%',val*0.75],['الكل',val]]
+      .map(([lbl,v]) => `<button onclick="setAmount(${v})">${lbl}</button>`).join('');
+  }
+}
+function setAmount(v){
+  modalAmount = Math.round(v);
+  document.getElementById('amountLbl').textContent = fmtMoney(modalAmount);
+}
+document.getElementById('confirmBtn').addEventListener('click', () => {
+  if (modalAmount <= 0) { toast('اختر مبلغاً أولاً'); return; }
+  socket.emit('player:trade', { code: myCode, stockId: modalStock.id, action: modalAction, usdAmount: modalAmount });
+  document.getElementById('modalBg').classList.add('hidden');
+});
+
+function toast(msg){
+  const area = document.getElementById('toastArea');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  area.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+socket.on('card:drawn', ({ text }) => toast(text));
+socket.on('news:event', ({ text }) => toast(text));
+
+socket.on('game:ended', ({ results }) => renderEnd(results));
+</script>
+</body>
+</html>

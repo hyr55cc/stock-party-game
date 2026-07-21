@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>بورصة الأصدقاء — شاشة العرض</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#000000; --surface:#0d0f10; --surface2:#16181a; --border:#232629;
+    --text:#f5f6f7; --text-dim:#8a9099; --text-dim2:#5b6167;
+    --green:#00c805; --green-dim:#00c80522; --red:#ff5252; --red-dim:#ff525222;
+    --accent:#5b8def;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden;
+  }
+  .mono{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; }
+  .hidden{ display:none !important; }
+  .wrap{ padding:28px 44px; max-width:1600px; margin:0 auto; }
+
+  /* ---------- LOBBY ---------- */
+  #lobby{ text-align:center; padding-top:5vh; }
+  .brand{ display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px; }
+  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--green); box-shadow:0 0 12px var(--green); }
+  .brand span{ font-size:1.1em; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
+  #lobby h1{ font-size:2.6em; margin:4px 0 2px; font-weight:800; letter-spacing:-.02em; }
+  #lobby .sub{ color:var(--text-dim); font-size:1.1em; }
+
+  .code-box{
+    display:inline-flex; flex-direction:column; align-items:center; gap:6px;
+    margin:34px auto 20px; padding:26px 60px; background:var(--surface);
+    border:1px solid var(--border); border-radius:24px;
+  }
+  .code-box .label{ font-size:.85em; color:var(--text-dim); text-transform:uppercase; letter-spacing:.12em; font-weight:600; }
+  .code-box .code{ font-size:4.4em; letter-spacing:.18em; font-weight:700; color:var(--text); }
+  #qrcode{ margin:6px auto 4px; padding:10px; background:#fff; border-radius:14px; display:inline-block; }
+  .join-url{ color:var(--text-dim); font-size:1em; margin-top:2px; }
+
+  h3.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.85em; letter-spacing:.1em; font-weight:600; margin:40px 0 14px; }
+  .players-grid{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; max-width:1100px; margin:0 auto; min-height:50px; }
+  .player-chip{
+    display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:10px 20px 10px 14px; font-size:1.1em; animation:pop .25s ease;
+  }
+  .avatar{ width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.85em; color:#000; flex-shrink:0; }
+  @keyframes pop{ from{transform:scale(.7); opacity:0;} to{transform:scale(1); opacity:1;} }
+  .empty-hint{ color:var(--text-dim2); font-size:1em; }
+
+  .duration-picker{ margin:36px 0 6px; display:flex; gap:10px; justify-content:center; }
+  .duration-picker button{
+    font-size:1.05em; padding:12px 28px; border-radius:12px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
+  }
+  .duration-picker button.active{ background:var(--text); color:#000; border-color:var(--text); }
+  #startBtn{
+    font-size:1.25em; padding:16px 64px; border-radius:16px; border:none; margin-top:22px;
+    background:var(--green); color:#00230a; font-weight:700; cursor:pointer; transition:.15s;
+  }
+  #startBtn:disabled{ opacity:.3; cursor:not-allowed; }
+  #startBtn:not(:disabled):hover{ filter:brightness(1.08); }
+
+  /* ---------- GAME ---------- */
+  .topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+  .topbar .brand h2{ font-size:1.3em; margin:0; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .topbar .brand .code-pill{ font-size:.6em; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:4px 10px; border-radius:8px; }
+  #timer{
+    font-size:2em; font-weight:700; padding:10px 28px; border-radius:14px;
+    background:var(--surface); border:1px solid var(--border); color:var(--text);
+  }
+  #timer.warn{ color:var(--red); border-color:var(--red); animation:pulse 1s infinite; }
+  @keyframes pulse{ 50%{ opacity:.45; } }
+
+  .main-grid{ display:grid; grid-template-columns:1fr 1.3fr; gap:20px; }
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:18px 20px 8px; }
+  .panel-hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  .panel-hdr h3{ margin:0; color:var(--text-dim); font-size:.85em; text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
+
+  .board-row{
+    display:flex; align-items:center; gap:12px; padding:13px 6px; border-bottom:1px solid var(--border);
+  }
+  .board-row:last-child{ border-bottom:none; }
+  .board-row .rank{ font-size:1.05em; width:22px; color:var(--text-dim2); font-weight:700; }
+  .board-row .avatar{ width:36px; height:36px; font-size:.95em; }
+  .board-row .info{ flex:1; min-width:0; }
+  .board-row .name{ font-size:1.05em; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .board-row .name .offline-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-dim2); }
+  .board-row .gain{ font-size:.88em; font-weight:600; margin-top:1px; }
+  .board-row .value{ font-size:1.15em; font-weight:700; text-align:left; }
+  .up{ color:var(--green); } .down{ color:var(--red); } .flat{ color:var(--text-dim); }
+
+  .stocks-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px 0; }
+  .stock-card{ background:var(--surface2); border:1px solid var(--border); border-radius:16px; padding:14px 16px; }
+  .stock-card .row1{ display:flex; justify-content:space-between; align-items:flex-start; }
+  .stock-card .nm{ font-size:1em; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .stock-card .nm .ico{ font-size:1.15em; }
+  .stock-card .price{ font-weight:700; font-size:1.15em; margin-top:2px; }
+  .stock-card .chg-pill{ font-size:.78em; font-weight:700; padding:3px 9px; border-radius:8px; }
+  .chg-pill.up{ background:var(--green-dim); color:var(--green); }
+  .chg-pill.down{ background:var(--red-dim); color:var(--red); }
+  .spark-wrap{ height:34px; margin-top:8px; }
+  .spark-wrap canvas{ width:100%; height:100%; display:block; }
+  .div-badge{ font-size:.7em; color:#ffb020; margin-top:4px; }
+
+  .news-ticker{
+    margin-top:18px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:12px 20px; font-size:1.05em; white-space:nowrap; overflow:hidden; position:relative; display:flex; align-items:center; gap:14px;
+  }
+  .news-tag{ background:var(--text); color:#000; font-size:.7em; font-weight:800; text-transform:uppercase; letter-spacing:.08em; padding:5px 10px; border-radius:7px; flex-shrink:0; }
+  .news-scroll{ overflow:hidden; flex:1; }
+  .news-ticker .track{ display:inline-block; padding-right:100%; animation:scroll 30s linear infinite; color:var(--text-dim); }
+  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
+  .news-pos{ color:var(--green); font-weight:600; } .news-neg{ color:var(--red); font-weight:600; }
+
+  /* ---------- END ---------- */
+  #end{ text-align:center; padding-top:6vh; }
+  #end .brand{ margin-bottom:10px; }
+  #end h1{ font-size:2.2em; font-weight:800; margin-bottom:36px; }
+  .podium{ display:flex; align-items:flex-end; justify-content:center; gap:16px; max-width:820px; margin:0 auto 30px; }
+  .podium-slot{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .podium-slot .avatar{ width:56px; height:56px; font-size:1.4em; }
+  .podium-slot.p1 .avatar{ width:72px; height:72px; font-size:1.7em; }
+  .podium-slot .pname{ font-weight:700; font-size:1.1em; }
+  .podium-slot .pval{ color:var(--green); font-weight:700; }
+  .podium-bar{ width:150px; border-radius:14px 14px 0 0; background:var(--surface); border:1px solid var(--border); border-bottom:none; display:flex; align-items:flex-start; justify-content:center; padding-top:10px; font-weight:800; font-size:1.4em; }
+  .p1 .podium-bar{ height:150px; background:linear-gradient(180deg,#1c1a08,var(--surface)); border-color:#3a3312; color:#ffd166; }
+  .p2 .podium-bar{ height:105px; color:var(--text-dim); }
+  .p3 .podium-bar{ height:75px; color:#cd7f32; }
+  .rest-list{ max-width:560px; margin:0 auto; }
+  .final-row{ display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); font-size:1.1em; }
+  .final-row:last-child{ border-bottom:none; }
+  #resetBtn{ margin-top:34px; font-size:1.1em; padding:14px 40px; border-radius:14px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-weight:600; }
+  #resetBtn:hover{ border-color:var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- LOBBY -->
+  <div id="lobby">
+    <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
+    <h1>📈 بورصة الأصدقاء</h1>
+    <div class="sub">افتح جوالك، امسح الرمز، وانضم للسوق</div>
+    <div class="code-box">
+      <div class="label">كود الانضمام</div>
+      <div class="code mono" id="gameCode">----</div>
+    </div>
+    <div id="qrcode"></div>
+    <div class="join-url mono" id="joinUrl"></div>
+
+    <h3 class="section-lbl">اللاعبون المنضمّون</h3>
+    <div class="players-grid" id="playersGrid"><div class="empty-hint">بانتظار اللاعبين...</div></div>
+
+    <div class="duration-picker">
+      <button data-min="30" class="active">30 دقيقة</button>
+      <button data-min="45">45 دقيقة</button>
+      <button data-min="60">60 دقيقة</button>
+    </div>
+    <br/>
+    <button id="startBtn" disabled>ابدأ اللعبة</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="game" class="hidden">
+    <div class="topbar">
+      <div class="brand"><h2>📈 بورصة الأصدقاء <span class="code-pill mono" id="codeSmall"></span></h2></div>
+      <div id="timer" class="mono">30:00</div>
+    </div>
+    <div class="main-grid">
+      <div class="panel">
+        <div class="panel-hdr"><h3>المتصدرون</h3></div>
+        <div id="board"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hdr"><h3>السوق</h3></div>
+        <div class="stocks-grid" id="stocksGrid"></div>
+      </div>
+    </div>
+    <div class="news-ticker">
+      <div class="news-tag">مباشر</div>
+      <div class="news-scroll"><div class="track" id="newsTrack">مرحباً بكم في بورصة الأصدقاء</div></div>
+    </div>
+  </div>
+
+  <!-- END -->
+  <div id="end" class="hidden">
+    <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
+    <h1>🏁 انتهت اللعبة</h1>
+    <div class="podium" id="podium"></div>
+    <div class="rest-list" id="restList"></div>
+    <button id="resetBtn">لعبة جديدة</button>
+  </div>
+
+</div>
+
+<script>
+const socket = io();
+let currentCode = null, hostToken = null;
+let selectedMinutes = 30;
+
+const AVATAR_COLORS = ['#00c805','#5b8def','#ffb020','#ff5252','#a78bfa','#22d3ee','#f472b6','#fbbf24','#34d399','#f87171'];
+function colorFor(name){ let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))>>>0; return AVATAR_COLORS[h % AVATAR_COLORS.length]; }
+function initials(name){ return (name||'?').trim().slice(0,2).toUpperCase(); }
+
+// resume existing hosted game if we have one saved, else create new
+const savedCode = localStorage.getItem('spg_host_code');
+const savedToken = localStorage.getItem('spg_host_token');
+if (savedCode && savedToken) socket.emit('host:rejoin', { code: savedCode, hostToken: savedToken });
+else socket.emit('host:create');
+
+socket.on('host:created', ({ code, hostToken: tok }) => {
+  currentCode = code; hostToken = tok;
+  localStorage.setItem('spg_host_code', code);
+  localStorage.setItem('spg_host_token', tok);
+  document.getElementById('gameCode').textContent = code;
+  document.getElementById('codeSmall').textContent = '#' + code;
+  const url = `${location.origin}/player.html?code=${code}`;
+  document.getElementById('joinUrl').textContent = url;
+  document.getElementById('qrcode').innerHTML = '';
+  new QRCode(document.getElementById('qrcode'), { text: url, width: 150, height: 150, colorDark:'#000', colorLight:'#fff' });
+});
+
+document.querySelectorAll('.duration-picker button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.duration-picker button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMinutes = parseInt(btn.dataset.min, 10);
+  });
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  socket.emit('host:start', { code: currentCode, durationMs: selectedMinutes * 60000 });
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  socket.emit('host:reset', { code: currentCode });
+  document.getElementById('end').classList.add('hidden');
+  document.getElementById('lobby').classList.remove('hidden');
+});
+
+function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+function fmtTime(ms){
+  const totalSec = Math.max(0, Math.floor(ms/1000));
+  const m = Math.floor(totalSec/60), s = totalSec%60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function drawSparkline(canvas, data, color){
+  if (!canvas || data.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const min = Math.min(...data), max = Math.max(...data), range = (max-min) || 1;
+  const pad = 3;
+  const pts = data.map((v,i) => [ (i/(data.length-1))*w, h-pad-((v-min)/range)*(h-pad*2) ]);
+  ctx.beginPath();
+  pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.stroke();
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, color + '3a'); grad.addColorStop(1, color + '00');
+  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+}
+
+socket.on('state:update', state => {
+  if (state.status === 'lobby') {
+    document.getElementById('lobby').classList.remove('hidden');
+    document.getElementById('game').classList.add('hidden');
+    document.getElementById('end').classList.add('hidden');
+    document.getElementById('startBtn').disabled = state.players.length < 1;
+    const grid = document.getElementById('playersGrid');
+    grid.innerHTML = state.players.length
+      ? state.players.map(p => `<div class="player-chip"><span class="avatar" style="background:${colorFor(p.name)}">${initials(p.name)}</span>${p.name}</div>`).join('')
+      : '<div class="empty-hint">بانتظار اللاعبين...</div>';
+  } else if (state.status === 'running') {
+    document.getElementById('lobby').classList.add('hidden');
+    document.getElementById('game').classList.remove('hidden');
+    document.getElementById('end').classList.add('hidden');
+
+    const timerEl = document.getElementById('timer');
+    timerEl.textContent = fmtTime(state.timeLeftMs);
+    timerEl.classList.toggle('warn', state.timeLeftMs < 60000);
+
+    const board = document.getElementById('board');
+    board.innerHTML = state.players.map((p, i) => {
+      const cls = p.gainPct > 0 ? 'up' : (p.gainPct < 0 ? 'down' : 'flat');
+      return `<div class="board-row">
+        <span class="rank mono">${i+1}</span>
+        <span class="avatar" style="background:${colorFor(p.name)}">${initials(p.name)}</span>
+        <span class="info">
+          <div class="name">${p.name}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}</div>
+          <div class="gain ${cls} mono">${p.gainPct>0?'+':''}${p.gainPct}%</div>
+        </span>
+        <span class="value mono">${fmtMoney(p.value)}</span>
+      </div>`;
+    }).join('');
+
+    const sgrid = document.getElementById('stocksGrid');
+    sgrid.innerHTML = state.stocks.map(s => `
+      <div class="stock-card">
+        <div class="row1">
+          <div>
+            <div class="nm"><span class="ico">${s.icon}</span>${s.name}</div>
+            <div class="price mono">${fmtMoney(s.price)}</div>
+            ${s.dividend ? '<div class="div-badge">💵 يوزع أرباح</div>' : ''}
+          </div>
+          <div class="chg-pill ${s.changePct>=0?'up':'down'} mono">${s.changePct>=0?'+':''}${s.changePct}%</div>
+        </div>
+        <div class="spark-wrap"><canvas id="spark-${s.id}"></canvas></div>
+      </div>`).join('');
+    state.stocks.forEach(s => drawSparkline(document.getElementById('spark-'+s.id), s.history, s.changePct>=0 ? '#00c805' : '#ff5252'));
+
+    if (state.news.length) {
+      const track = document.getElementById('newsTrack');
+      track.innerHTML = state.news.map(n => `<span class="${n.type==='pos'?'news-pos':'news-neg'}">${n.type==='pos'?'▲':'▼'} ${n.text}</span>`).join('&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;');
+    }
+  } else if (state.status === 'ended') {
+    renderEnd(state.players);
+  }
+});
+
+function renderEnd(results){
+  document.getElementById('lobby').classList.add('hidden');
+  document.getElementById('game').classList.add('hidden');
+  document.getElementById('end').classList.remove('hidden');
+  const top3 = results.slice(0,3);
+  const order = [1,0,2].filter(i => top3[i]);
+  const podium = document.getElementById('podium');
+  podium.innerHTML = order.map(i => {
+    const p = top3[i]; const rankClass = ['p1','p2','p3'][i];
+    return `<div class="podium-slot ${rankClass}">
+      <span class="avatar" style="background:${colorFor(p.name)}">${initials(p.name)}</span>
+      <div class="pname">${p.name}</div>
+      <div class="pval mono">${fmtMoney(p.value)}</div>
+      <div class="podium-bar mono">${i+1}</div>
+    </div>`;
+  }).join('');
+  const rest = results.slice(3);
+  document.getElementById('restList').innerHTML = rest.map((p,i) => `
+    <div class="final-row"><span>${i+4}. ${p.name}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+}
+
+socket.on('game:ended', ({ results }) => renderEnd(results));
+
+socket.on('errorMsg', msg => {
+  if (msg.includes('استرجاع')) {
+    localStorage.removeItem('spg_host_code'); localStorage.removeItem('spg_host_token');
+    socket.emit('host:create');
+  } else alert(msg);
+});
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.spark-wrap canvas').forEach(c => { c.width = 0; });
+});
+</script>
+</body>
+</html>
