@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
 <style>
   :root{
     --bg:#000000; --surface:#0d0f10; --surface2:#16181a; --border:#232629;
@@ -44,7 +45,7 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* HEADER */
-  .hdr{ padding:6px 4px 18px; }
+  .hdr{ padding:6px 4px 18px; display:flex; justify-content:space-between; align-items:flex-start; }
   .hdr .lbl{ color:var(--text-dim); font-size:.85em; font-weight:600; }
   .hdr .val{ font-size:2.5em; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
   .hdr .gainrow{ display:flex; align-items:center; gap:8px; margin-top:4px; }
@@ -54,6 +55,8 @@
   .hdr .timer{ margin-top:12px; display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--border); padding:6px 14px; border-radius:10px; font-size:.95em; color:var(--text-dim); }
   .hdr .timer .tval{ color:var(--text); font-weight:700; }
   .hdr .timer.warn .tval{ color:var(--red); }
+  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+  .ghost-btn{ background:var(--surface); border:1px solid var(--border); color:var(--text); padding:9px 14px; border-radius:11px; font-size:.85em; font-weight:600; font-family:inherit; }
 
   h4.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.8em; letter-spacing:.08em; font-weight:600; margin:18px 4px 8px; }
 
@@ -66,7 +69,8 @@
   .stock-row .mid{ flex:1; min-width:0; }
   .stock-row .nm{ font-size:1.02em; font-weight:600; }
   .stock-row .hold{ font-size:.8em; color:var(--text-dim); margin-top:1px; }
-  .stock-row .spark{ width:56px; height:28px; flex-shrink:0; }
+  .stock-row .spark{ width:60px; height:30px; flex-shrink:0; }
+  .stock-row .spark canvas{ width:100%; height:100%; display:block; }
   .stock-row .right{ text-align:left; flex-shrink:0; min-width:74px; }
   .stock-row .pr{ font-weight:700; font-size:1.02em; }
   .stock-row .chg{ font-size:.82em; font-weight:600; margin-top:1px; }
@@ -74,32 +78,54 @@
   .frozen{ opacity:.4; }
   .frozen-badge{ font-size:.72em; color:#ffb020; margin-top:1px; }
 
-  /* MODAL */
-  #modalBg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:flex-end; z-index:50; backdrop-filter:blur(2px); }
-  #modal{ background:var(--surface); width:100%; border-radius:24px 24px 0 0; padding:22px 20px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; }
+  /* BOTTOM SHEETS */
+  .sheet-bg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:flex-end; z-index:50; backdrop-filter:blur(2px); }
+  .sheet{ background:var(--surface); width:100%; border-radius:24px 24px 0 0; padding:22px 20px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; }
   .modal-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
   .modal-hdr .ico-badge{ width:34px; height:34px; border-radius:10px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:1.1em; }
   .modal-hdr .titles{ flex:1; }
   .modal-hdr h3{ margin:0; font-size:1.15em; }
   .modal-hdr .mp{ color:var(--text-dim); font-size:.85em; }
   #detailChart{ width:100%; height:90px; margin:14px 0 6px; display:block; }
-  .holding-line{ display:flex; justify-content:space-between; font-size:.85em; color:var(--text-dim); margin-bottom:16px; }
+  .bidask-row{ display:flex; justify-content:space-between; background:var(--surface2); border-radius:12px; padding:10px 14px; margin:10px 0; font-size:.9em; }
+  .bidask-row .cell{ text-align:center; flex:1; }
+  .bidask-row .cell .k{ color:var(--text-dim); font-size:.8em; }
+  .bidask-row .cell .v{ font-weight:700; margin-top:2px; }
+  .holding-line{ display:flex; justify-content:space-between; font-size:.85em; color:var(--text-dim); margin-bottom:14px; }
 
   .tabs{ display:flex; gap:8px; margin-bottom:16px; background:var(--surface2); border-radius:12px; padding:4px; }
   .tabs button{ flex:1; padding:10px; border-radius:9px; border:none; background:transparent; color:var(--text-dim); font-size:1em; font-weight:700; font-family:inherit; }
   .tabs button.active{ background:var(--text); color:#000; }
-  #amountLbl{ text-align:center; font-size:2.2em; font-weight:800; margin:6px 0 4px; }
-  #amountSub{ text-align:center; color:var(--text-dim); font-size:.85em; margin-bottom:14px; }
+  #qtyInput{
+    width:100%; text-align:center; font-size:2.2em; font-weight:800; margin:6px 0 4px; background:transparent;
+    border:none; color:var(--text); font-family:'IBM Plex Mono',monospace; outline:none;
+  }
+  #qtyInput::-webkit-outer-spin-button, #qtyInput::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  #qtyLbl{ text-align:center; color:var(--text-dim); font-size:.8em; margin-top:-4px; }
+  #amountSub{ text-align:center; color:var(--text-dim); font-size:.85em; margin-bottom:14px; min-height:1.2em; }
   .quick{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 18px; }
   .quick button{ flex:1; min-width:70px; padding:11px; border-radius:11px; border:1px solid var(--border); background:var(--surface2); color:#fff; font-family:inherit; font-weight:600; font-size:.95em; }
   #confirmBtn{ width:100%; padding:16px; border-radius:14px; border:none; color:#00230a; font-weight:700; font-size:1.05em; }
   #confirmBtn.sellMode{ color:#2a0303; }
-  #closeModal{ width:100%; padding:10px; margin-top:8px; background:none; border:none; color:var(--text-dim); font-family:inherit; font-size:.95em; }
+  .closeBtn{ width:100%; padding:10px; margin-top:8px; background:none; border:none; color:var(--text-dim); font-family:inherit; font-size:.95em; }
+
+  /* ORDERS */
+  .order-row{ display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--border); }
+  .order-row:last-child{ border-bottom:none; }
+  .order-badge{ font-size:.72em; font-weight:800; padding:4px 9px; border-radius:8px; flex-shrink:0; }
+  .order-badge.buy{ background:var(--green-dim); color:var(--green); }
+  .order-badge.sell{ background:var(--red-dim); color:var(--red); }
+  .order-name{ flex:1; min-width:0; font-size:.95em; }
+  .order-name .oq{ color:var(--text-dim); font-size:.82em; margin-top:1px; }
+  .order-right{ text-align:left; flex-shrink:0; }
+  .order-right .ot{ font-weight:700; font-size:.95em; }
+  .order-right .otime{ color:var(--text-dim2); font-size:.75em; margin-top:1px; }
+  .empty-hint{ color:var(--text-dim2); text-align:center; padding:30px 0; }
 
   /* TOAST */
   #toastArea{ position:fixed; top:14px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:99; padding:0 16px; }
-  .toast{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 18px; font-size:.9em; max-width:420px; text-align:center; animation:fadeInOut 4s ease forwards; box-shadow:0 8px 24px rgba(0,0,0,.4); }
-  @keyframes fadeInOut{ 0%{opacity:0; transform:translateY(-8px);} 10%{opacity:1; transform:translateY(0);} 85%{opacity:1;} 100%{opacity:0;} }
+  .toast{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 20px; font-size:.92em; max-width:420px; text-align:center; animation:fadeInOut 7s ease forwards; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  @keyframes fadeInOut{ 0%{opacity:0; transform:translateY(-8px);} 6%{opacity:1; transform:translateY(0);} 88%{opacity:1;} 100%{opacity:0;} }
 
   #end{ text-align:center; padding-top:12vh; }
   #end h1{ color:var(--text); font-size:1.9em; font-weight:800; }
@@ -129,13 +155,18 @@
   <!-- GAME -->
   <div id="game" class="hidden">
     <div class="hdr">
-      <div class="lbl">قيمة محفظتك</div>
-      <div class="val mono" id="myValue">$100,000</div>
-      <div class="gainrow">
-        <span class="gain-pill flat mono" id="myGainPill">0.00%</span>
-        <span class="cash mono" id="myCash">نقد: $100,000</span>
+      <div>
+        <div class="lbl">قيمة محفظتك</div>
+        <div class="val mono" id="myValue">$100,000</div>
+        <div class="gainrow">
+          <span class="gain-pill flat mono" id="myGainPill">0.00%</span>
+          <span class="cash mono" id="myCash">نقد: $100,000</span>
+        </div>
       </div>
-      <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
+      <div class="hdr-right">
+        <button class="ghost-btn" id="ordersBtn">📜 الأوامر</button>
+        <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
+      </div>
     </div>
     <h4 class="section-lbl">السوق</h4>
     <div id="stocksList"></div>
@@ -156,8 +187,9 @@
 
 <div id="toastArea"></div>
 
-<div id="modalBg" class="hidden">
-  <div id="modal">
+<!-- TRADE SHEET -->
+<div id="modalBg" class="sheet-bg hidden">
+  <div id="modal" class="sheet">
     <div class="modal-hdr">
       <div class="ico-badge" id="modalIco"></div>
       <div class="titles">
@@ -166,23 +198,37 @@
       </div>
     </div>
     <canvas id="detailChart"></canvas>
+    <div class="bidask-row mono">
+      <div class="cell"><div class="k">سعر الشراء</div><div class="v up" id="buyPriceLbl">$0</div></div>
+      <div class="cell"><div class="k">سعر البيع</div><div class="v down" id="sellPriceLbl">$0</div></div>
+    </div>
     <div class="holding-line"><span id="holdQty">تملك: 0</span><span id="holdVal">$0</span></div>
     <div class="tabs">
       <button id="tabBuy" class="active">شراء</button>
       <button id="tabSell">بيع</button>
     </div>
-    <div id="amountLbl">$0</div>
+    <input id="qtyInput" type="number" inputmode="numeric" min="0" step="1" placeholder="0" />
+    <div id="qtyLbl">عدد الأسهم</div>
     <div id="amountSub">&nbsp;</div>
     <div class="quick" id="quickButtons"></div>
     <button id="confirmBtn">تأكيد</button>
-    <button id="closeModal">إغلاق</button>
+    <button class="closeBtn" id="closeModal">إغلاق</button>
+  </div>
+</div>
+
+<!-- ORDERS SHEET -->
+<div id="ordersBg" class="sheet-bg hidden">
+  <div id="ordersModal" class="sheet">
+    <div class="modal-hdr"><h3>📜 سجل الأوامر</h3></div>
+    <div id="ordersList"></div>
+    <button class="closeBtn" id="closeOrders">إغلاق</button>
   </div>
 </div>
 
 <script>
 const socket = io();
 let myCode = null, myToken = null, myState = null, latestState = null;
-let modalStock = null, modalAction = 'buy', modalAmount = 0;
+let modalStock = null, modalAction = 'buy', modalQty = 0;
 let attemptingRejoin = false;
 
 const params = new URLSearchParams(location.search);
@@ -233,34 +279,6 @@ socket.on('player:joined', ({ code, name, token }) => {
   document.getElementById('waiting').classList.remove('hidden');
 });
 
-function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
-function fmtTime(ms){
-  const totalSec = Math.max(0, Math.floor(ms/1000));
-  const m = Math.floor(totalSec/60), s = totalSec%60;
-  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-}
-function drawSparkline(canvas, data, color){
-  if (!canvas || !data || data.length < 2) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (!w || !h) return;
-  canvas.width = w*dpr; canvas.height = h*dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,w,h);
-  const min = Math.min(...data), max = Math.max(...data), range = (max-min)||1;
-  const pad = 3;
-  const pts = data.map((v,i) => [ (i/(data.length-1))*w, h-pad-((v-min)/range)*(h-pad*2) ]);
-  ctx.beginPath();
-  pts.forEach(([x,y],i) => i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
-  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin='round'; ctx.lineCap='round';
-  ctx.stroke();
-  const grad = ctx.createLinearGradient(0,0,0,h);
-  grad.addColorStop(0, color+'35'); grad.addColorStop(1, color+'00');
-  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-}
-
 socket.on('state:update', state => {
   latestState = state;
   if (state.status === 'running') {
@@ -305,6 +323,7 @@ socket.on('player:update', p => {
   pill.textContent = (p.gainPct>0?'+':'') + p.gainPct + '%';
   pill.className = 'gain-pill mono ' + (p.gainPct>0?'up':(p.gainPct<0?'down':'flat'));
   if (latestState && latestState.status === 'running') renderStocks(latestState);
+  if (!document.getElementById('ordersBg').classList.contains('hidden')) renderOrders();
 });
 
 function renderStocks(state){
@@ -316,7 +335,7 @@ function renderStocks(state){
       <div class="ico-badge">${s.icon}</div>
       <div class="mid">
         <div class="nm">${s.name}</div>
-        ${qty>0 ? `<div class="hold mono">${qty.toFixed(3)} · ${fmtMoney(qty*s.price)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
+        ${qty>0 ? `<div class="hold mono">${qty} سهم · ${fmtMoney(qty*s.price)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
       </div>
       <div class="spark"><canvas id="rowspark-${s.id}"></canvas></div>
       <div class="right">
@@ -325,12 +344,12 @@ function renderStocks(state){
       </div>
     </div>`;
   }).join('');
-  state.stocks.forEach(s => drawSparkline(document.getElementById('rowspark-'+s.id), s.history, s.changePct>=0?'#00c805':'#ff5252'));
+  state.stocks.forEach(s => drawCandles(document.getElementById('rowspark-'+s.id), s.candles, 16));
 }
 
 function openModal(stockId){
   modalStock = latestState.stocks.find(s => s.id === stockId);
-  modalAction = 'buy'; modalAmount = 0;
+  modalAction = 'buy'; modalQty = 0;
   document.getElementById('modalIco').textContent = modalStock.icon;
   document.getElementById('modalTitle').textContent = modalStock.name;
   updateModalPrice();
@@ -340,48 +359,96 @@ function openModal(stockId){
 function updateModalPrice(){
   document.getElementById('modalPrice').textContent = fmtMoney(modalStock.price) + '  ' + (modalStock.changePct>=0?'▲':'▼') + Math.abs(modalStock.changePct) + '%';
   document.getElementById('modalPrice').className = 'mp mono ' + (modalStock.changePct>=0?'up':'down');
-  drawSparkline(document.getElementById('detailChart'), modalStock.history, modalStock.changePct>=0?'#00c805':'#ff5252');
+  document.getElementById('buyPriceLbl').textContent = fmtMoney(modalStock.buyPrice);
+  document.getElementById('sellPriceLbl').textContent = fmtMoney(modalStock.sellPrice);
+  drawCandles(document.getElementById('detailChart'), modalStock.candles, 40);
   const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
-  document.getElementById('holdQty').textContent = 'تملك: ' + qty.toFixed(3);
+  document.getElementById('holdQty').textContent = 'تملك: ' + qty + ' سهم';
   document.getElementById('holdVal').textContent = fmtMoney(qty * modalStock.price);
+  updateTotals();
 }
 document.getElementById('closeModal').addEventListener('click', () => document.getElementById('modalBg').classList.add('hidden'));
 document.getElementById('tabBuy').addEventListener('click', () => setTab('buy'));
 document.getElementById('tabSell').addEventListener('click', () => setTab('sell'));
+document.getElementById('qtyInput').addEventListener('input', updateTotals);
+
+function execPrice(){
+  const useMid = myState && myState.noSpreadNext;
+  if (useMid) return modalStock.price;
+  return modalAction === 'buy' ? modalStock.buyPrice : modalStock.sellPrice;
+}
 
 function setTab(action){
-  modalAction = action; modalAmount = 0;
+  modalAction = action; modalQty = 0;
   document.getElementById('tabBuy').classList.toggle('active', action==='buy');
   document.getElementById('tabSell').classList.toggle('active', action==='sell');
-  document.getElementById('amountLbl').textContent = '$0';
+  document.getElementById('qtyInput').value = '';
   const confirmBtn = document.getElementById('confirmBtn');
   confirmBtn.textContent = action==='buy' ? 'تأكيد الشراء' : 'تأكيد البيع';
   confirmBtn.style.background = action==='buy' ? 'var(--green)' : 'var(--red)';
   confirmBtn.classList.toggle('sellMode', action==='sell');
   const qb = document.getElementById('quickButtons');
-  const sub = document.getElementById('amountSub');
   if (action === 'buy') {
     const cash = myState ? myState.cash : 0;
-    sub.textContent = 'نقد متاح: ' + fmtMoney(cash);
-    qb.innerHTML = [['$1,000',1000],['$5,000',5000],['$10,000',10000],['الكل',cash]]
-      .map(([lbl,val]) => `<button onclick="setAmount(${val})">${lbl}</button>`).join('');
+    const maxQty = Math.max(0, Math.floor(cash / execPrice()));
+    qb.innerHTML = [['1',1],['5',5],['10',10],['أقصى كمية',maxQty]]
+      .map(([lbl,v]) => `<button onclick="setQty(${v})">${lbl}</button>`).join('');
   } else {
-    const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
-    const val = qty * modalStock.price;
-    sub.textContent = 'قيمة ما تملك: ' + fmtMoney(val);
-    qb.innerHTML = [['25%',val*0.25],['50%',val*0.5],['75%',val*0.75],['الكل',val]]
-      .map(([lbl,v]) => `<button onclick="setAmount(${v})">${lbl}</button>`).join('');
+    const owned = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
+    qb.innerHTML = [['1',1],['5',5],['10',10],['الكل',owned]]
+      .map(([lbl,v]) => `<button onclick="setQty(${v})">${lbl}</button>`).join('');
   }
+  updateTotals();
 }
-function setAmount(v){
-  modalAmount = Math.round(v);
-  document.getElementById('amountLbl').textContent = fmtMoney(modalAmount);
+function setQty(n){
+  document.getElementById('qtyInput').value = Math.max(0, Math.floor(n));
+  updateTotals();
+}
+function updateTotals(){
+  const qty = Math.max(0, Math.floor(Number(document.getElementById('qtyInput').value) || 0));
+  modalQty = qty;
+  const price = execPrice();
+  const total = qty * price;
+  const sub = document.getElementById('amountSub');
+  sub.textContent = qty > 0
+    ? (modalAction==='buy' ? 'التكلفة: ' : 'العائد: ') + fmtMoney(total) + ' (' + fmtMoney(price) + ' لكل سهم)'
+    : 'أدخل عدد الأسهم';
 }
 document.getElementById('confirmBtn').addEventListener('click', () => {
-  if (modalAmount <= 0) { toast('اختر مبلغاً أولاً'); return; }
-  socket.emit('player:trade', { code: myCode, stockId: modalStock.id, action: modalAction, usdAmount: modalAmount });
+  if (modalQty <= 0) { toast('اختر عدد أسهم أولاً'); return; }
+  if (modalAction === 'buy') {
+    const cost = modalQty * execPrice();
+    if (myState && cost > myState.cash + 0.01) { toast('رصيدك النقدي لا يكفي لهذه الكمية'); return; }
+  } else {
+    const owned = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
+    if (modalQty > owned) { toast('لا تملك هذه الكمية لبيعها'); return; }
+  }
+  socket.emit('player:trade', { code: myCode, stockId: modalStock.id, action: modalAction, qty: modalQty });
   document.getElementById('modalBg').classList.add('hidden');
 });
+
+// ORDERS SHEET
+document.getElementById('ordersBtn').addEventListener('click', () => {
+  renderOrders();
+  document.getElementById('ordersBg').classList.remove('hidden');
+});
+document.getElementById('closeOrders').addEventListener('click', () => document.getElementById('ordersBg').classList.add('hidden'));
+function renderOrders(){
+  const list = (myState && myState.orders) || [];
+  const el = document.getElementById('ordersList');
+  el.innerHTML = list.length ? list.map(o => `
+    <div class="order-row">
+      <span class="order-badge ${o.action}">${o.action==='buy'?'شراء':'بيع'}</span>
+      <div class="order-name">
+        <div>${o.icon} ${o.stockName}</div>
+        <div class="oq mono">${o.qty} سهم × ${fmtMoney(o.price)}</div>
+      </div>
+      <div class="order-right">
+        <div class="ot mono">${fmtMoney(o.total)}</div>
+        <div class="otime">${fmtClock(o.time)}</div>
+      </div>
+    </div>`).join('') : '<div class="empty-hint">ما فيه صفقات بعد</div>';
+}
 
 function toast(msg){
   const area = document.getElementById('toastArea');
@@ -389,10 +456,10 @@ function toast(msg){
   el.className = 'toast';
   el.textContent = msg;
   area.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  setTimeout(() => el.remove(), 7000);
 }
-socket.on('card:drawn', ({ text }) => toast(text));
-socket.on('news:event', ({ text }) => toast(text));
+socket.on('card:drawn', ({ text, type }) => { toast(text); playChime(type === 'opportunity' ? 'pos' : 'neg'); });
+socket.on('news:event', ({ text, type }) => { toast(text); playChime(type); });
 
 socket.on('game:ended', ({ results }) => renderEnd(results));
 </script>

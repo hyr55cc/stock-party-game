@@ -21,16 +21,16 @@ app.get('/healthz', (req, res) => res.send('ok'));
 //  بيانات الأسهم الأساسية
 // ------------------------------------------------------------
 const STOCK_DEFS = [
-  { id: 'btc',  name: 'بيتكوين',      icon: '₿', price: 60000, volatility: 0.05, dividend: false },
-  { id: 'eth',  name: 'إيثيريوم',     icon: 'Ξ', price: 3000,  volatility: 0.055, dividend: false },
-  { id: 'gold', name: 'ذهب',          icon: '🥇', price: 2000,  volatility: 0.012, dividend: false },
-  { id: 'slv',  name: 'فضة',          icon: '🥈', price: 25,    volatility: 0.02,  dividend: false },
-  { id: 'oil',  name: 'نفط',          icon: '🛢️', price: 80,    volatility: 0.03,  dividend: false },
-  { id: 'tsla', name: 'تسلا',         icon: '🚗', price: 250,   volatility: 0.04,  dividend: false },
-  { id: 'aapl', name: 'آبل',          icon: '🍎', price: 190,   volatility: 0.02,  dividend: true  },
-  { id: 'amzn', name: 'أمازون',       icon: '📦', price: 180,   volatility: 0.025, dividend: false },
-  { id: 'bank', name: 'بنك الخليج',   icon: '🏦', price: 50,    volatility: 0.015, dividend: true  },
-  { id: 'air',  name: 'طيران الشرق',  icon: '✈️', price: 30,    volatility: 0.035, dividend: false },
+  { id: 'btc',  name: 'بيتكوين',        icon: '₿', price: 60000, volatility: 0.05, dividend: false },
+  { id: 'eth',  name: 'إيثيريوم',       icon: 'Ξ', price: 3000,  volatility: 0.055, dividend: false },
+  { id: 'gold', name: 'ذهب',            icon: '🥇', price: 2000,  volatility: 0.012, dividend: false },
+  { id: 'slv',  name: 'فضة',            icon: '🥈', price: 25,    volatility: 0.02,  dividend: false },
+  { id: 'oil',  name: 'نفط',            icon: '🛢️', price: 80,    volatility: 0.03,  dividend: false },
+  { id: 'tsla', name: 'تسلا',           icon: '🚗', price: 250,   volatility: 0.04,  dividend: false },
+  { id: 'aapl', name: 'آبل',            icon: '🍎', price: 190,   volatility: 0.02,  dividend: true  },
+  { id: 'amzn', name: 'أمازون',         icon: '📦', price: 180,   volatility: 0.025, dividend: false },
+  { id: 'bank', name: 'بنك الراجحي',    icon: '🏦', price: 50,    volatility: 0.015, dividend: true  },
+  { id: 'air',  name: 'إدريس',          icon: '👔', price: 30,    volatility: 0.035, dividend: false },
 ];
 
 // ------------------------------------------------------------
@@ -58,10 +58,10 @@ const NEWS_POOL = [
   { scope: 'aapl', type: 'neg', text: 'تراجع كبير في مبيعات آيفون بالسوق الصيني', min: 0.05, max: 0.1 },
   { scope: 'amzn', type: 'pos', text: 'أمازون تحقق أرباحاً قياسية في موسم التسوق', min: 0.06, max: 0.12 },
   { scope: 'amzn', type: 'neg', text: 'إضراب واسع لعمال مستودعات أمازون', min: 0.05, max: 0.1 },
-  { scope: 'bank', type: 'pos', text: 'بنك الخليج يعلن أرباحاً فصلية قوية', min: 0.04, max: 0.08 },
+  { scope: 'bank', type: 'pos', text: 'بنك الراجحي يعلن أرباحاً فصلية قوية', min: 0.04, max: 0.08 },
   { scope: 'bank', type: 'neg', text: 'فضيحة مالية تهز قطاع البنوك', min: 0.06, max: 0.12 },
-  { scope: 'air',  type: 'pos', text: 'انتعاش كبير في حركة السفر الجوي بعد فتح الحدود', min: 0.06, max: 0.12 },
-  { scope: 'air',  type: 'neg', text: 'إلغاء رحلات جماعي بسبب عطل فني واسع', min: 0.06, max: 0.12 },
+  { scope: 'air',  type: 'pos', text: 'إدريس تطلق تشكيلة جديدة وتحقق مبيعات قياسية', min: 0.06, max: 0.12 },
+  { scope: 'air',  type: 'neg', text: 'منافسة شديدة من علامات عالمية تضغط على مبيعات إدريس', min: 0.05, max: 0.1 },
 ];
 
 // ------------------------------------------------------------
@@ -69,7 +69,7 @@ const NEWS_POOL = [
 // ------------------------------------------------------------
 const CARDS = [
   { type: 'opportunity', text: 'بطاقة فرصة 🎉: هبة نقدية مفاجئة +2,000$', apply: p => { p.cash += 2000; } },
-  { type: 'opportunity', text: 'بطاقة فرصة 🎉: عمولة صفقتك القادمة مجانية', apply: p => { p.freeCommission = true; } },
+  { type: 'opportunity', text: 'بطاقة فرصة 🎉: صفقتك القادمة بدون فرق سعر (سبريد)', apply: p => { p.noSpreadNext = true; } },
   { type: 'opportunity', text: 'بطاقة فرصة 🎉: أرباح توزيعاتك القادمة مضاعفة', apply: p => { p.doubleDividend = true; } },
   { type: 'challenge',   text: 'بطاقة تحدي ⚠️: رسوم مفاجئة -1,000$', apply: p => { p.cash = Math.max(0, p.cash - 1000); } },
   { type: 'challenge',   text: 'بطاقة تحدي ⚠️: تجميد سهم عشوائي من محفظتك لمدة 30 ثانية', apply: (p, game) => {
@@ -82,8 +82,11 @@ const CARDS = [
   { type: 'challenge', text: 'بطاقة تحدي ⚠️: "ضريبة النجاح" -3% من رصيدك النقدي', apply: p => { p.cash = Math.round(p.cash * 0.97); } },
 ];
 
-const COMMISSION_RATE = 0.005; // 0.5%
+const SPREAD = 0.006;      // فرق سعر البيع/الشراء الكلي 0.6% (0.3% فوق ± 0.3% تحت منتصف السعر)
+const TICK_MS = 30000;     // تحديث الأسعار كل 30 ثانية
 const START_CASH = 100000;
+
+function round2(n) { return Math.round(n * 100) / 100; }
 
 // ------------------------------------------------------------
 //  إدارة الألعاب (غرف)
@@ -96,8 +99,23 @@ function randCode() {
   return code;
 }
 
+function makeCandle(open, close) {
+  const body = Math.abs(close - open) || open * 0.001;
+  const upWick = body * (0.2 + Math.random() * 0.6);
+  const downWick = body * (0.2 + Math.random() * 0.6);
+  const high = Math.max(open, close) + upWick;
+  const low = Math.max(0.01, Math.min(open, close) - downWick);
+  return { o: round2(open), h: round2(high), l: round2(low), c: round2(close) };
+}
+
 function freshStocks() {
-  return STOCK_DEFS.map(s => ({ ...s, startPrice: s.price, prevPrice: s.price, changePct: 0, history: [s.price] }));
+  return STOCK_DEFS.map(s => ({
+    ...s,
+    startPrice: s.price,
+    prevPrice: s.price,
+    changePct: 0,
+    candles: [{ o: s.price, h: s.price, l: s.price, c: s.price }],
+  }));
 }
 
 function createGame(hostSocketId) {
@@ -125,8 +143,9 @@ function newPlayer(name) {
     token: crypto.randomUUID(),
     name,
     cash: START_CASH,
-    holdings: {},          // stockId -> qty
-    freeCommission: false,
+    holdings: {},          // stockId -> qty (whole shares)
+    orders: [],            // transaction history
+    noSpreadNext: false,
     doubleDividend: false,
     frozenStock: null,
     frozenUntil: 0,
@@ -134,6 +153,20 @@ function newPlayer(name) {
     joinedAt: Date.now(),
     connected: true,
   };
+}
+
+function recordOrder(player, stock, action, qty, price) {
+  player.orders.unshift({
+    stockId: stock.id,
+    stockName: stock.name,
+    icon: stock.icon,
+    action,
+    qty,
+    price: round2(price),
+    total: round2(qty * price),
+    time: Date.now(),
+  });
+  if (player.orders.length > 100) player.orders.length = 100;
 }
 
 function portfolioValue(game, player) {
@@ -173,11 +206,14 @@ function publicState(game) {
     durationMs: game.durationMs,
     timeLeftMs,
     stocks: game.stocks.map(s => ({
-      id: s.id, name: s.name, icon: s.icon, price: Math.round(s.price * 100) / 100,
+      id: s.id, name: s.name, icon: s.icon,
+      price: round2(s.price),
+      buyPrice: round2(s.price * (1 + SPREAD / 2)),
+      sellPrice: round2(s.price * (1 - SPREAD / 2)),
       changePct: s.changePct,
       sessionChangePct: Math.round(((s.price - s.startPrice) / s.startPrice) * 10000) / 100,
       dividend: s.dividend,
-      history: s.history,
+      candles: s.candles,
     })),
     players: leaderboard(game),
     news: game.news.slice(-8),
@@ -195,7 +231,8 @@ function playerState(game, socketId) {
     value,
     gainPct: Math.round(((value - START_CASH) / START_CASH) * 10000) / 100,
     holdings: p.holdings,
-    freeCommission: p.freeCommission,
+    orders: p.orders,
+    noSpreadNext: p.noSpreadNext,
     doubleDividend: p.doubleDividend,
     frozenStock: p.frozenUntil > Date.now() ? p.frozenStock : null,
     history: p.history,
@@ -203,7 +240,7 @@ function playerState(game, socketId) {
 }
 
 function broadcast(game) {
-  // track portfolio value history per player (for mini chart)
+  // track portfolio value history per player (for possible future mini chart)
   for (const p of game.players.values()) {
     const v = portfolioValue(game, p);
     const last = p.history[p.history.length - 1];
@@ -228,12 +265,14 @@ function addNews(game, text, type, stockId) {
 // ------------------------------------------------------------
 function tickPrices(game) {
   for (const s of game.stocks) {
-    s.prevPrice = s.price;
+    const open = s.price;
     const randomWalk = (Math.random() - 0.5) * 2 * s.volatility;
-    s.price = Math.max(0.5, s.price * (1 + randomWalk));
-    s.changePct = Math.round(((s.price - s.prevPrice) / s.prevPrice) * 10000) / 100;
-    s.history.push(s.price);
-    if (s.history.length > 60) s.history.shift();
+    const close = Math.max(0.5, open * (1 + randomWalk));
+    s.prevPrice = open;
+    s.price = close;
+    s.changePct = Math.round(((close - open) / open) * 10000) / 100;
+    s.candles.push(makeCandle(open, close));
+    if (s.candles.length > 60) s.candles.shift();
   }
 }
 
@@ -242,12 +281,20 @@ function triggerNews(game) {
   const pct = item.min + Math.random() * (item.max - item.min);
   const sign = item.type === 'pos' ? 1 : -1;
   if (item.scope === 'global') {
-    for (const s of game.stocks) s.price = Math.max(0.5, s.price * (1 + sign * pct));
+    for (const s of game.stocks) {
+      const open = s.price;
+      s.price = Math.max(0.5, s.price * (1 + sign * pct));
+      s.candles.push(makeCandle(open, s.price));
+      if (s.candles.length > 60) s.candles.shift();
+    }
     addNews(game, item.text, item.type, null);
   } else {
     const s = game.stocks.find(x => x.id === item.scope);
     if (s) {
+      const open = s.price;
       s.price = Math.max(0.5, s.price * (1 + sign * pct));
+      s.candles.push(makeCandle(open, s.price));
+      if (s.candles.length > 60) s.candles.shift();
       addNews(game, `${s.icon} ${s.name}: ${item.text}`, item.type, s.id);
     }
   }
@@ -269,7 +316,7 @@ function payDividends(game) {
       paidAny = true;
     }
   }
-  if (paidAny) addNews(game, '💰 توزيعات أرباح! حاملو أسهم آبل وبنك الخليج حصلوا على أرباح نقدية', 'pos', null);
+  if (paidAny) addNews(game, '💰 توزيعات أرباح! حاملو أسهم آبل وبنك الراجحي حصلوا على أرباح نقدية', 'pos', null);
 }
 
 function drawCard(game) {
@@ -288,7 +335,7 @@ function startGame(game, durationMs) {
   game.startTime = Date.now();
   game.endTime = game.startTime + durationMs;
 
-  game.timers.price = setInterval(() => { tickPrices(game); broadcast(game); }, 4000);
+  game.timers.price = setInterval(() => { tickPrices(game); broadcast(game); }, TICK_MS);
   scheduleNews(game);
   game.timers.dividend = setInterval(() => { payDividends(game); broadcast(game); }, 90000);
   game.timers.card = setInterval(() => { drawCard(game); }, 50000);
@@ -362,7 +409,7 @@ io.on('connection', socket => {
     game.stocks = freshStocks();
     game.news = [];
     for (const p of game.players.values()) {
-      p.cash = START_CASH; p.holdings = {}; p.freeCommission = false;
+      p.cash = START_CASH; p.holdings = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0;
       p.history = [START_CASH];
     }
@@ -405,36 +452,44 @@ io.on('connection', socket => {
     broadcast(game);
   });
 
-  socket.on('player:trade', ({ code, stockId, action, usdAmount }) => {
+  socket.on('player:trade', ({ code, stockId, action, qty }) => {
     const game = games.get(code);
     if (!game || game.status !== 'running') return;
     const player = game.players.get(socket.id);
     if (!player) return;
     const stock = game.stocks.find(s => s.id === stockId);
     if (!stock) return;
+
+    qty = Math.floor(Number(qty));
+    if (!qty || qty <= 0) { socket.emit('errorMsg', 'اختر كمية صحيحة'); return; }
+
     if (player.frozenStock === stockId && player.frozenUntil > Date.now()) {
       socket.emit('errorMsg', 'هذا السهم مجمد مؤقتاً بسبب بطاقة تحدي!');
       return;
     }
-    const commission = player.freeCommission ? 0 : COMMISSION_RATE;
+
+    const useMid = player.noSpreadNext;
+    const buyPrice = useMid ? stock.price : stock.price * (1 + SPREAD / 2);
+    const sellPrice = useMid ? stock.price : stock.price * (1 - SPREAD / 2);
 
     if (action === 'buy') {
-      let spend = Math.min(usdAmount, player.cash);
-      if (spend <= 0) return;
-      const net = spend * (1 - commission);
-      const qty = net / stock.price;
-      player.cash -= spend;
+      const cost = qty * buyPrice;
+      if (cost > player.cash + 0.01) { socket.emit('errorMsg', 'رصيدك النقدي لا يكفي لهذه الكمية'); return; }
+      player.cash -= cost;
       player.holdings[stockId] = (player.holdings[stockId] || 0) + qty;
+      recordOrder(player, stock, 'buy', qty, buyPrice);
     } else if (action === 'sell') {
       const owned = player.holdings[stockId] || 0;
-      let qtyToSell = Math.min(usdAmount / stock.price, owned);
-      if (qtyToSell <= 0) return;
-      const gross = qtyToSell * stock.price;
-      const net = gross * (1 - commission);
-      player.holdings[stockId] = owned - qtyToSell;
-      player.cash += net;
+      if (qty > owned) { socket.emit('errorMsg', 'لا تملك هذه الكمية لبيعها'); return; }
+      const proceeds = qty * sellPrice;
+      player.holdings[stockId] = owned - qty;
+      player.cash += proceeds;
+      recordOrder(player, stock, 'sell', qty, sellPrice);
+    } else {
+      return;
     }
-    if (player.freeCommission) player.freeCommission = false;
+
+    if (player.noSpreadNext) player.noSpreadNext = false;
     broadcast(game);
   });
 

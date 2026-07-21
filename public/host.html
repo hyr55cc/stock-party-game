@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/common.js"></script>
 <style>
   :root{
     --bg:#000000; --surface:#0d0f10; --surface2:#16181a; --border:#232629;
@@ -103,9 +104,25 @@
   .stock-card .chg-pill{ font-size:.78em; font-weight:700; padding:3px 9px; border-radius:8px; }
   .chg-pill.up{ background:var(--green-dim); color:var(--green); }
   .chg-pill.down{ background:var(--red-dim); color:var(--red); }
-  .spark-wrap{ height:34px; margin-top:8px; }
+  .spark-wrap{ height:48px; margin-top:8px; }
   .spark-wrap canvas{ width:100%; height:100%; display:block; }
   .div-badge{ font-size:.7em; color:#ffb020; margin-top:4px; }
+  .bs-row{ display:flex; gap:10px; margin-top:6px; font-size:.72em; }
+  .bs-row span b{ font-weight:700; }
+  .bs-row .b{ color:var(--green); } .bs-row .s{ color:var(--red); }
+
+  /* ---------- BREAKING NEWS BANNER ---------- */
+  #breakingNews{ position:fixed; top:0; left:0; right:0; z-index:90; display:flex; justify-content:center; pointer-events:none; }
+  #breakingNews.hidden{ display:none; }
+  #breakingNews .bn-inner{
+    margin-top:20px; display:flex; align-items:center; gap:16px; padding:20px 42px; border-radius:20px;
+    font-size:1.7em; font-weight:700; max-width:82%; box-shadow:0 24px 60px rgba(0,0,0,.55);
+    animation:bnSlide .35s cubic-bezier(.2,.9,.3,1.3); backdrop-filter:blur(8px);
+  }
+  #breakingNews.pos .bn-inner{ background:rgba(0,200,5,.18); border:1.5px solid var(--green); color:#eafff0; }
+  #breakingNews.neg .bn-inner{ background:rgba(255,82,82,.18); border:1.5px solid var(--red); color:#fff0f0; }
+  .bn-tag{ font-size:.5em; text-transform:uppercase; letter-spacing:.1em; font-weight:800; padding:5px 10px; border-radius:8px; background:rgba(255,255,255,.12); flex-shrink:0; }
+  @keyframes bnSlide{ from{ transform:translateY(-50px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
 
   .news-ticker{
     margin-top:18px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
@@ -139,6 +156,15 @@
 </style>
 </head>
 <body>
+
+<div id="breakingNews" class="hidden">
+  <div class="bn-inner">
+    <span class="bn-tag" id="bnTag">خبر عاجل</span>
+    <span id="bnIcon">📢</span>
+    <span id="bnText"></span>
+  </div>
+</div>
+
 <div class="wrap">
 
   <!-- LOBBY -->
@@ -203,10 +229,6 @@ const socket = io();
 let currentCode = null, hostToken = null;
 let selectedMinutes = 30;
 
-const AVATAR_COLORS = ['#00c805','#5b8def','#ffb020','#ff5252','#a78bfa','#22d3ee','#f472b6','#fbbf24','#34d399','#f87171'];
-function colorFor(name){ let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))>>>0; return AVATAR_COLORS[h % AVATAR_COLORS.length]; }
-function initials(name){ return (name||'?').trim().slice(0,2).toUpperCase(); }
-
 // resume existing hosted game if we have one saved, else create new
 const savedCode = localStorage.getItem('spg_host_code');
 const savedToken = localStorage.getItem('spg_host_token');
@@ -243,33 +265,19 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   document.getElementById('lobby').classList.remove('hidden');
 });
 
-function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
-function fmtTime(ms){
-  const totalSec = Math.max(0, Math.floor(ms/1000));
-  const m = Math.floor(totalSec/60), s = totalSec%60;
-  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+let bnTimeout;
+function showBreakingNews(text, type){
+  const el = document.getElementById('breakingNews');
+  document.getElementById('bnIcon').textContent = type === 'pos' ? '📈' : '📉';
+  document.getElementById('bnText').textContent = text;
+  el.className = type === 'pos' ? 'pos' : 'neg';
+  clearTimeout(bnTimeout);
+  bnTimeout = setTimeout(() => { el.className = 'hidden'; }, 7500);
 }
-
-function drawSparkline(canvas, data, color){
-  if (!canvas || data.length < 2) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  canvas.width = w * dpr; canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,w,h);
-  const min = Math.min(...data), max = Math.max(...data), range = (max-min) || 1;
-  const pad = 3;
-  const pts = data.map((v,i) => [ (i/(data.length-1))*w, h-pad-((v-min)/range)*(h-pad*2) ]);
-  ctx.beginPath();
-  pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y));
-  ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineJoin='round'; ctx.lineCap='round';
-  ctx.stroke();
-  const grad = ctx.createLinearGradient(0,0,0,h);
-  grad.addColorStop(0, color + '3a'); grad.addColorStop(1, color + '00');
-  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-}
+socket.on('news:event', ({ text, type }) => {
+  showBreakingNews(text, type);
+  playChime(type);
+});
 
 socket.on('state:update', state => {
   if (state.status === 'lobby') {
@@ -311,13 +319,14 @@ socket.on('state:update', state => {
           <div>
             <div class="nm"><span class="ico">${s.icon}</span>${s.name}</div>
             <div class="price mono">${fmtMoney(s.price)}</div>
+            <div class="bs-row mono"><span class="b">شراء ${fmtMoney(s.buyPrice)}</span><span class="s">بيع ${fmtMoney(s.sellPrice)}</span></div>
             ${s.dividend ? '<div class="div-badge">💵 يوزع أرباح</div>' : ''}
           </div>
           <div class="chg-pill ${s.changePct>=0?'up':'down'} mono">${s.changePct>=0?'+':''}${s.changePct}%</div>
         </div>
         <div class="spark-wrap"><canvas id="spark-${s.id}"></canvas></div>
       </div>`).join('');
-    state.stocks.forEach(s => drawSparkline(document.getElementById('spark-'+s.id), s.history, s.changePct>=0 ? '#00c805' : '#ff5252'));
+    state.stocks.forEach(s => drawCandles(document.getElementById('spark-'+s.id), s.candles, 30));
 
     if (state.news.length) {
       const track = document.getElementById('newsTrack');
