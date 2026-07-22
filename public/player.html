@@ -63,23 +63,28 @@
 
   h4.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.8em; letter-spacing:.08em; font-weight:600; margin:18px 4px 8px; }
 
-  .stock-row{
-    display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:16px;
-    padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:.1s;
+  #stocksList{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stock-tile{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:12px 13px; cursor:pointer; transition:.1s; min-width:0;
   }
-  .stock-row:active{ transform:scale(.98); }
-  .stock-row .ico-badge{ width:38px; height:38px; border-radius:11px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:1.2em; flex-shrink:0; }
-  .stock-row .mid{ flex:1; min-width:0; }
-  .stock-row .nm{ font-size:1.02em; font-weight:600; }
-  .stock-row .hold{ font-size:.8em; color:var(--text-dim); margin-top:1px; }
-  .stock-row .spark{ width:60px; height:30px; flex-shrink:0; }
-  .stock-row .spark canvas{ width:100%; height:100%; display:block; }
-  .stock-row .right{ text-align:left; flex-shrink:0; min-width:74px; }
-  .stock-row .pr{ font-weight:700; font-size:1.02em; }
-  .stock-row .chg{ font-size:.82em; font-weight:600; margin-top:1px; }
+  .stock-tile:active{ transform:scale(.97); }
+  .stock-tile .st-top{ display:flex; align-items:center; gap:7px; margin-bottom:6px; min-width:0; }
+  .stock-tile .ico-badge{ width:30px; height:30px; border-radius:9px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:1.05em; flex-shrink:0; }
+  .stock-tile .st-name{ font-size:.86em; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .stock-tile .st-price{ font-weight:700; font-size:1.05em; }
+  .stock-tile .st-chg{ font-size:.78em; font-weight:600; margin-top:1px; }
+  .stock-tile .spark{ height:30px; margin-top:6px; }
+  .stock-tile .spark canvas{ width:100%; height:100%; display:block; }
+  .stock-tile .hold{ font-size:.72em; color:var(--text-dim); margin-top:6px; }
   .up{ color:var(--green); } .down{ color:var(--red); }
-  .frozen{ opacity:.4; }
-  .frozen-badge{ font-size:.72em; color:#ffb020; margin-top:1px; }
+  .stock-tile.frozen{ opacity:.4; }
+  .frozen-badge{ font-size:.7em; color:#ffb020; margin-top:6px; }
+
+  .liquidate-btn{
+    width:100%; padding:12px; border-radius:12px; border:1px solid var(--red); background:rgba(255,82,82,.08);
+    color:var(--red); font-weight:700; font-size:.92em; font-family:inherit; margin-bottom:14px;
+  }
 
   /* BOTTOM SHEETS */
   .sheet-bg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:flex-end; z-index:50; backdrop-filter:blur(2px); }
@@ -94,6 +99,7 @@
   .bidask-row .cell{ text-align:center; flex:1; }
   .bidask-row .cell .k{ color:var(--text-dim); font-size:.8em; }
   .bidask-row .cell .v{ font-weight:700; margin-top:2px; }
+  .range-row{ text-align:center; color:var(--text-dim2); font-size:.75em; margin:-4px 0 10px; }
   .holding-line{ display:flex; justify-content:space-between; font-size:.85em; color:var(--text-dim); margin-bottom:14px; }
 
   .tabs{ display:flex; gap:8px; margin-bottom:16px; background:var(--surface2); border-radius:12px; padding:4px; }
@@ -127,7 +133,9 @@
 
   /* TOAST */
   #toastArea{ position:fixed; top:14px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:99; padding:0 16px; }
-  .toast{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 20px; font-size:.92em; max-width:420px; text-align:center; animation:fadeInOut 7s ease forwards; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  .toast{ display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 12px 11px 20px; font-size:.92em; max-width:420px; animation:fadeInOut 7s ease forwards; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  .toast-msg{ flex:1; text-align:center; }
+  .toast-close{ background:none; border:none; color:var(--text-dim); font-size:1.1em; cursor:pointer; flex-shrink:0; padding:2px 6px; }
   @keyframes fadeInOut{ 0%{opacity:0; transform:translateY(-8px);} 6%{opacity:1; transform:translateY(0);} 88%{opacity:1;} 100%{opacity:0;} }
 
   #end{ text-align:center; padding-top:12vh; }
@@ -172,6 +180,7 @@
         <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
       </div>
     </div>
+    <button class="liquidate-btn" id="liquidateBtn">💰 تسييل المحفظة بالكامل</button>
     <h4 class="section-lbl">السوق</h4>
     <div id="stocksList"></div>
   </div>
@@ -206,6 +215,7 @@
       <div class="cell"><div class="k">سعر الشراء</div><div class="v up" id="buyPriceLbl">$0</div></div>
       <div class="cell"><div class="k">سعر البيع</div><div class="v down" id="sellPriceLbl">$0</div></div>
     </div>
+    <div class="range-row mono" id="rangeRow"></div>
     <div class="holding-line"><span id="holdQty">تملك: 0</span><span id="holdVal">$0</span></div>
     <div class="tabs">
       <button id="tabBuy" class="active">شراء</button>
@@ -315,7 +325,7 @@ function renderEnd(results){
   document.getElementById('myRankNum').textContent = idx>=0 ? '#'+(idx+1) : '#-';
   document.getElementById('myRankVal').textContent = idx>=0 ? fmtMoney(results[idx].value) : '';
   document.getElementById('fullResults').innerHTML = results.map((p,i) => `
-    <div class="final-row"><span>${i+1}. ${p.name}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+    <div class="final-row"><span>${i+1}. ${escapeHtml(p.name)}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
 }
 
 socket.on('player:update', p => {
@@ -358,17 +368,15 @@ function renderStocks(state){
   list.innerHTML = state.stocks.map(s => {
     const qty = myState && myState.holdings[s.id] ? myState.holdings[s.id] : 0;
     const frozen = myState && myState.frozenStock === s.id;
-    return `<div class="stock-row ${frozen?'frozen':''}" onclick="openModal('${s.id}')">
-      <div class="ico-badge">${s.icon}</div>
-      <div class="mid">
-        <div class="nm">${s.name}</div>
-        ${qty>0 ? `<div class="hold mono">${qty} سهم · متوسط ${fmtMoney((myState.avgCost&&myState.avgCost[s.id])||0)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
+    return `<div class="stock-tile ${frozen?'frozen':''}" onclick="openModal('${s.id}')">
+      <div class="st-top">
+        <div class="ico-badge">${s.icon}</div>
+        <div class="st-name">${s.name}</div>
       </div>
+      <div class="st-price mono">${fmtMoney(s.price)}</div>
+      <div class="st-chg mono ${s.changePct>=0?'up':'down'}">${s.changePct>=0?'+':''}${s.changePct}%</div>
       <div class="spark"><canvas id="rowspark-${s.id}"></canvas></div>
-      <div class="right">
-        <div class="pr mono">${fmtMoney(s.price)}</div>
-        <div class="chg mono ${s.changePct>=0?'up':'down'}">${s.changePct>=0?'+':''}${s.changePct}%</div>
-      </div>
+      ${qty>0 ? `<div class="hold mono">${qty} سهم · م ${fmtMoney((myState.avgCost&&myState.avgCost[s.id])||0)}</div>` : (frozen ? `<div class="frozen-badge">مجمد</div>` : (s.dividend ? `<div class="hold">يوزع أرباح 💵</div>` : ''))}
     </div>`;
   }).join('');
   state.stocks.forEach(s => drawCandles(document.getElementById('rowspark-'+s.id), s.candles, 16));
@@ -388,6 +396,7 @@ function updateModalPrice(){
   document.getElementById('modalPrice').className = 'mp mono ' + (modalStock.changePct>=0?'up':'down');
   document.getElementById('buyPriceLbl').textContent = fmtMoney(modalStock.buyPrice);
   document.getElementById('sellPriceLbl').textContent = fmtMoney(modalStock.sellPrice);
+  document.getElementById('rangeRow').textContent = 'النطاق المسموح: ' + fmtMoney(modalStock.minPrice) + ' – ' + fmtMoney(modalStock.maxPrice);
   drawCandles(document.getElementById('detailChart'), modalStock.candles, 40);
   const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
   const avg = myState && myState.avgCost && myState.avgCost[modalStock.id] ? myState.avgCost[modalStock.id] : 0;
@@ -482,12 +491,31 @@ function toast(msg){
   const area = document.getElementById('toastArea');
   const el = document.createElement('div');
   el.className = 'toast';
-  el.textContent = msg;
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-msg';
+  msgSpan.textContent = msg;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'toast-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => el.remove());
+  el.appendChild(msgSpan);
+  el.appendChild(closeBtn);
   area.appendChild(el);
   setTimeout(() => el.remove(), 7000);
 }
 socket.on('card:drawn', ({ text, type }) => { toast(text); playChime(type === 'opportunity' ? 'pos' : 'neg'); });
 socket.on('news:event', ({ text, type }) => { toast(text); playChime(type); });
+
+document.getElementById('liquidateBtn').addEventListener('click', () => {
+  if (!myState) return;
+  const hasHoldings = Object.values(myState.holdings || {}).some(q => q > 0);
+  if (!hasHoldings) { toast('لا توجد أسهم في محفظتك لتسييلها'); return; }
+  if (!confirm('تسييل جميع أسهمك وتحويلها لنقد الآن؟')) return;
+  socket.emit('player:liquidate', { code: myCode });
+});
+socket.on('liquidate:done', ({ soldCount, skippedFrozen }) => {
+  toast(`✅ تم تسييل ${soldCount} سهم${skippedFrozen ? ' (باستثناء سهم مجمد)' : ''}`);
+});
 
 socket.on('game:ended', ({ results }) => renderEnd(results));
 </script>

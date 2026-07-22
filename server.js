@@ -89,6 +89,7 @@ const MARGIN_MS = 5 * 60000; // مدة التمويل المضاعف: 5 دقائ
 const MARGIN_MAX_USES = 3;   // عدد مرات التمويل المسموحة لكل لاعب
 
 function round2(n) { return Math.round(n * 100) / 100; }
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
 // ------------------------------------------------------------
 //  إدارة الألعاب (غرف)
@@ -116,8 +117,35 @@ function freshStocks() {
     startPrice: s.price,
     prevPrice: s.price,
     changePct: 0,
+    minPrice: round2(s.price * 0.05),
+    maxPrice: round2(s.price * 15),
+    drift: 0,
+    isDoomed: false,
+    isMooning: false,
     candles: [{ o: s.price, h: s.price, l: s.price, c: s.price }],
   }));
+}
+
+// يختار عشوائياً سهماً "منهاراً" وآخر "صاروخياً" لكل لعبة، ويحسب انحدار السعر
+// اللازم حتى يصل السهم لهدفه تقريباً مع نهاية الوقت المحدد للعبة
+function pickWildStocks(game, durationMs) {
+  const pool = [...game.stocks];
+  const doomedIdx = Math.floor(Math.random() * pool.length);
+  const doomed = pool.splice(doomedIdx, 1)[0];
+  const moonIdx = Math.floor(Math.random() * pool.length);
+  const moon = pool[moonIdx];
+
+  const ticks = Math.max(1, Math.floor(durationMs / TICK_MS));
+  doomed.isDoomed = true;
+  doomed.minPrice = round2(doomed.startPrice * 0.02);
+  doomed.drift = Math.log(0.05) / ticks; // ينحدر نحو ~5% من سعره الأصلي
+
+  moon.isMooning = true;
+  moon.maxPrice = round2(moon.startPrice * 30);
+  moon.drift = Math.log(12) / ticks; // يرتفع نحو ~12 ضعف سعره الأصلي
+
+  addNews(game, '📉 تحذير من مصادر السوق: أحد الأسهم مقبل على انهيار حاد هذه الجولة!', 'neg', null);
+  addNews(game, '📈 شائعات عن سهم واحد سيحقق أرقاماً خيالية هذه الجولة!', 'pos', null);
 }
 
 function createGame(hostSocketId) {
@@ -276,6 +304,8 @@ function publicState(game) {
       changePct: s.changePct,
       sessionChangePct: Math.round(((s.price - s.startPrice) / s.startPrice) * 10000) / 100,
       dividend: s.dividend,
+      minPrice: s.minPrice,
+      maxPrice: s.maxPrice,
       candles: s.candles,
     })),
     players: leaderboard(game),
@@ -339,8 +369,8 @@ function addNews(game, text, type, stockId) {
 function tickPrices(game) {
   for (const s of game.stocks) {
     const open = s.price;
-    const randomWalk = (Math.random() - 0.5) * 2 * s.volatility;
-    const close = Math.max(0.5, open * (1 + randomWalk));
+    const randomWalk = (Math.random() - 0.5) * 2 * s.volatility + (s.drift || 0);
+    const close = clamp(open * (1 + randomWalk), s.minPrice, s.maxPrice);
     s.prevPrice = open;
     s.price = close;
     s.changePct = Math.round(((close - open) / open) * 10000) / 100;
@@ -356,7 +386,7 @@ function triggerNews(game) {
   if (item.scope === 'global') {
     for (const s of game.stocks) {
       const open = s.price;
-      s.price = Math.max(0.5, s.price * (1 + sign * pct));
+      s.price = clamp(s.price * (1 + sign * pct), s.minPrice, s.maxPrice);
       s.candles.push(makeCandle(open, s.price));
       if (s.candles.length > 60) s.candles.shift();
     }
@@ -365,7 +395,7 @@ function triggerNews(game) {
     const s = game.stocks.find(x => x.id === item.scope);
     if (s) {
       const open = s.price;
-      s.price = Math.max(0.5, s.price * (1 + sign * pct));
+      s.price = clamp(s.price * (1 + sign * pct), s.minPrice, s.maxPrice);
       s.candles.push(makeCandle(open, s.price));
       if (s.candles.length > 60) s.candles.shift();
       addNews(game, `${s.icon} ${s.name}: ${item.text}`, item.type, s.id);
@@ -407,6 +437,7 @@ function startGame(game, durationMs) {
   game.durationMs = durationMs;
   game.startTime = Date.now();
   game.endTime = game.startTime + durationMs;
+  pickWildStocks(game, durationMs);
 
   game.timers.price = setInterval(() => { tickPrices(game); broadcast(game); }, TICK_MS);
   scheduleNews(game);
@@ -562,6 +593,27 @@ io.on('connection', socket => {
     }
 
     if (player.noSpreadNext) player.noSpreadNext = false;
+    broadcast(game);
+  });
+
+  socket.on('player:liquidate', ({ code }) => {
+    const game = games.get(code);
+    if (!game || game.status !== 'running') return;
+    const player = game.players.get(socket.id);
+    if (!player) return;
+    const useMid = player.noSpreadNext;
+    let soldCount = 0, skippedFrozen = false;
+    for (const s of game.stocks) {
+      const qty = player.holdings[s.id] || 0;
+      if (qty <= 0) continue;
+      if (player.frozenStock === s.id && player.frozenUntil > Date.now()) { skippedFrozen = true; continue; }
+      const sellPrice = useMid ? s.price : s.price * (1 - SPREAD / 2);
+      applySell(player, s, qty, sellPrice);
+      soldCount++;
+    }
+    if (player.noSpreadNext) player.noSpreadNext = false;
+    if (soldCount === 0) { socket.emit('errorMsg', skippedFrozen ? 'سهمك الوحيد مجمد حالياً، لا يمكن تسييله' : 'لا توجد أسهم في محفظتك لتسييلها'); return; }
+    socket.emit('liquidate:done', { soldCount, skippedFrozen });
     broadcast(game);
   });
 

@@ -17,6 +17,12 @@ function fmtClock(ts) {
   return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 }
 
+// يمنع حقن HTML من أسماء اللاعبين (نص حر يدخله المستخدم) قبل إدراجها بالصفحة
+const _escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c => _escMap[c]);
+}
+
 const AVATAR_COLORS = ['#00c805', '#5b8def', '#ffb020', '#ff5252', '#a78bfa', '#22d3ee', '#f472b6', '#fbbf24', '#34d399', '#f87171'];
 function colorFor(name) {
   let h = 0;
