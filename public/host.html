@@ -82,17 +82,17 @@
   .panel-hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding-bottom:12px; border-bottom:1px solid var(--border); }
   .panel-hdr h3{ margin:0; color:var(--text-dim); font-size:.85em; text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
 
-  .board-row{
-    display:flex; align-items:center; gap:12px; padding:13px 6px; border-bottom:1px solid var(--border);
-  }
-  .board-row:last-child{ border-bottom:none; }
-  .board-row .rank{ font-size:1.05em; width:22px; color:var(--text-dim2); font-weight:700; }
-  .board-row .avatar{ width:36px; height:36px; font-size:.95em; }
-  .board-row .info{ flex:1; min-width:0; }
-  .board-row .name{ font-size:1.05em; font-weight:600; display:flex; align-items:center; gap:6px; }
-  .board-row .name .offline-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-dim2); }
-  .board-row .gain{ font-size:.88em; font-weight:600; margin-top:1px; }
-  .board-row .value{ font-size:1.15em; font-weight:700; text-align:left; }
+  #board{ display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px 0; }
+  .player-card{ background:var(--surface2); border:1px solid var(--border); border-radius:16px; padding:12px 14px; position:relative; }
+  .player-card.rank1{ border-color:#ffd166; box-shadow:0 0 16px rgba(255,209,102,.2); }
+  .player-card .rank-badge{ position:absolute; top:12px; left:14px; font-size:.85em; color:var(--text-dim2); font-weight:700; }
+  .player-card .pc-top{ display:flex; align-items:center; gap:9px; margin-bottom:8px; }
+  .player-card .avatar{ width:36px; height:36px; font-size:.95em; flex-shrink:0; }
+  .player-card .pc-name{ font-size:1em; font-weight:600; display:flex; align-items:center; gap:6px; min-width:0; }
+  .player-card .pc-name .offline-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-dim2); flex-shrink:0; }
+  .margin-badge{ font-size:.7em; background:rgba(255,176,32,.18); color:#ffb020; padding:2px 7px; border-radius:6px; flex-shrink:0; }
+  .player-card .pc-value{ font-size:1.2em; font-weight:700; }
+  .player-card .pc-gain{ font-size:.85em; font-weight:600; margin-top:1px; }
   .up{ color:var(--green); } .down{ color:var(--red); } .flat{ color:var(--text-dim); }
 
   .stocks-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px 0; }
@@ -301,14 +301,14 @@ socket.on('state:update', state => {
     const board = document.getElementById('board');
     board.innerHTML = state.players.map((p, i) => {
       const cls = p.gainPct > 0 ? 'up' : (p.gainPct < 0 ? 'down' : 'flat');
-      return `<div class="board-row">
-        <span class="rank mono">${i+1}</span>
-        <span class="avatar" style="background:${colorFor(p.name)}">${initials(p.name)}</span>
-        <span class="info">
-          <div class="name">${p.name}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}</div>
-          <div class="gain ${cls} mono">${p.gainPct>0?'+':''}${p.gainPct}%</div>
-        </span>
-        <span class="value mono">${fmtMoney(p.value)}</span>
+      return `<div class="player-card ${i===0?'rank1':''}">
+        <span class="rank-badge mono">#${i+1}</span>
+        <div class="pc-top">
+          <span class="avatar" style="background:${colorFor(p.name)}">${initials(p.name)}</span>
+          <span class="pc-name">${p.name}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</span>
+        </div>
+        <div class="pc-value mono">${fmtMoney(p.value)}</div>
+        <div class="pc-gain ${cls} mono">${p.gainPct>0?'+':''}${p.gainPct}%</div>
       </div>`;
     }).join('');
 

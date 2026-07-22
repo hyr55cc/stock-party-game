@@ -55,8 +55,11 @@
   .hdr .timer{ margin-top:12px; display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--border); padding:6px 14px; border-radius:10px; font-size:.95em; color:var(--text-dim); }
   .hdr .timer .tval{ color:var(--text); font-weight:700; }
   .hdr .timer.warn .tval{ color:var(--red); }
-  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
   .ghost-btn{ background:var(--surface); border:1px solid var(--border); color:var(--text); padding:9px 14px; border-radius:11px; font-size:.85em; font-weight:600; font-family:inherit; }
+  .margin-btn{ border-color:#ffb020; color:#ffb020; }
+  .margin-btn.active{ background:rgba(255,176,32,.12); }
+  .margin-btn:disabled{ opacity:.4; }
 
   h4.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.8em; letter-spacing:.08em; font-weight:600; margin:18px 4px 8px; }
 
@@ -165,6 +168,7 @@
       </div>
       <div class="hdr-right">
         <button class="ghost-btn" id="ordersBtn">📜 الأوامر</button>
+        <button class="ghost-btn margin-btn" id="marginBtn">🚀 تمويل ×2</button>
         <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
       </div>
     </div>
@@ -322,8 +326,31 @@ socket.on('player:update', p => {
   const pill = document.getElementById('myGainPill');
   pill.textContent = (p.gainPct>0?'+':'') + p.gainPct + '%';
   pill.className = 'gain-pill mono ' + (p.gainPct>0?'up':(p.gainPct<0?'down':'flat'));
+  updateMarginBtn();
   if (latestState && latestState.status === 'running') renderStocks(latestState);
   if (!document.getElementById('ordersBg').classList.contains('hidden')) renderOrders();
+});
+
+function updateMarginBtn(){
+  const btn = document.getElementById('marginBtn');
+  if (!myState) return;
+  if (myState.marginActive) {
+    const left = Math.max(0, myState.marginExpiresAt - Date.now());
+    btn.textContent = '⏳ تمويل نشط ' + fmtTime(left);
+    btn.disabled = true;
+    btn.classList.add('active');
+  } else {
+    btn.classList.remove('active');
+    btn.disabled = myState.marginUsesLeft <= 0;
+    btn.textContent = '🚀 تمويل ×2 (' + myState.marginUsesLeft + ')';
+  }
+}
+document.getElementById('marginBtn').addEventListener('click', () => {
+  if (!myState || myState.marginActive || myState.marginUsesLeft <= 0) return;
+  socket.emit('player:margin', { code: myCode });
+});
+socket.on('trade:confirmed', ({ action, qty, price, total, stockName, icon }) => {
+  toast(`✅ ${action==='buy'?'اشتريت':'بعت'} ${qty} ${icon} ${stockName} بسعر ${fmtMoney(price)}/سهم (الإجمالي ${fmtMoney(total)})`);
 });
 
 function renderStocks(state){
@@ -335,7 +362,7 @@ function renderStocks(state){
       <div class="ico-badge">${s.icon}</div>
       <div class="mid">
         <div class="nm">${s.name}</div>
-        ${qty>0 ? `<div class="hold mono">${qty} سهم · ${fmtMoney(qty*s.price)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
+        ${qty>0 ? `<div class="hold mono">${qty} سهم · متوسط ${fmtMoney((myState.avgCost&&myState.avgCost[s.id])||0)}</div>` : (frozen ? `<div class="frozen-badge">مجمد مؤقتاً</div>` : `<div class="hold">${s.dividend?'يوزع أرباح 💵':'&nbsp;'}</div>`)}
       </div>
       <div class="spark"><canvas id="rowspark-${s.id}"></canvas></div>
       <div class="right">
@@ -363,7 +390,8 @@ function updateModalPrice(){
   document.getElementById('sellPriceLbl').textContent = fmtMoney(modalStock.sellPrice);
   drawCandles(document.getElementById('detailChart'), modalStock.candles, 40);
   const qty = myState && myState.holdings[modalStock.id] ? myState.holdings[modalStock.id] : 0;
-  document.getElementById('holdQty').textContent = 'تملك: ' + qty + ' سهم';
+  const avg = myState && myState.avgCost && myState.avgCost[modalStock.id] ? myState.avgCost[modalStock.id] : 0;
+  document.getElementById('holdQty').textContent = 'تملك: ' + qty + ' سهم' + (qty>0 ? ' (متوسط ' + fmtMoney(avg) + ')' : '');
   document.getElementById('holdVal').textContent = fmtMoney(qty * modalStock.price);
   updateTotals();
 }

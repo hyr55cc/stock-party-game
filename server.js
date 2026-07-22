@@ -21,16 +21,16 @@ app.get('/healthz', (req, res) => res.send('ok'));
 //  بيانات الأسهم الأساسية
 // ------------------------------------------------------------
 const STOCK_DEFS = [
-  { id: 'btc',  name: 'بيتكوين',        icon: '₿', price: 60000, volatility: 0.05, dividend: false },
-  { id: 'eth',  name: 'إيثيريوم',       icon: 'Ξ', price: 3000,  volatility: 0.055, dividend: false },
+  { id: 'btc',  name: 'بيتكوين',        icon: '₿', price: 60000, volatility: 0.10, dividend: false },
+  { id: 'eth',  name: 'إيثيريوم',       icon: 'Ξ', price: 3000,  volatility: 0.11, dividend: false },
   { id: 'gold', name: 'ذهب',            icon: '🥇', price: 2000,  volatility: 0.012, dividend: false },
   { id: 'slv',  name: 'فضة',            icon: '🥈', price: 25,    volatility: 0.02,  dividend: false },
-  { id: 'oil',  name: 'نفط',            icon: '🛢️', price: 80,    volatility: 0.03,  dividend: false },
-  { id: 'tsla', name: 'تسلا',           icon: '🚗', price: 250,   volatility: 0.04,  dividend: false },
+  { id: 'oil',  name: 'نفط',            icon: '🛢️', price: 80,    volatility: 0.05,  dividend: false },
+  { id: 'tsla', name: 'تسلا',           icon: '🚗', price: 250,   volatility: 0.08,  dividend: false },
   { id: 'aapl', name: 'آبل',            icon: '🍎', price: 190,   volatility: 0.02,  dividend: true  },
-  { id: 'amzn', name: 'أمازون',         icon: '📦', price: 180,   volatility: 0.025, dividend: false },
+  { id: 'amzn', name: 'أمازون',         icon: '📦', price: 180,   volatility: 0.03,  dividend: false },
   { id: 'bank', name: 'بنك الراجحي',    icon: '🏦', price: 50,    volatility: 0.015, dividend: true  },
-  { id: 'air',  name: 'إدريس',          icon: '👔', price: 30,    volatility: 0.035, dividend: false },
+  { id: 'air',  name: 'الدريس',         icon: '⛽', price: 30,    volatility: 0.07,  dividend: false },
 ];
 
 // ------------------------------------------------------------
@@ -42,26 +42,26 @@ const NEWS_POOL = [
   { scope: 'global', type: 'neg', text: 'أزمة اقتصادية عالمية مفاجئة.. هبوط حاد في كل الأسواق!', min: 0.04, max: 0.08 },
   { scope: 'global', type: 'neg', text: 'ارتفاع التضخم يثير قلق المستثمرين.. تراجع عام في الأسعار', min: 0.02, max: 0.05 },
 
-  { scope: 'btc', type: 'pos', text: 'دولة كبرى تعلن اعتماد البيتكوين عملة رسمية!', min: 0.12, max: 0.25 },
-  { scope: 'btc', type: 'neg', text: 'حظر تعدين العملات الرقمية في دولة كبرى', min: 0.12, max: 0.22 },
-  { scope: 'eth', type: 'pos', text: 'تحديث ضخم لشبكة إيثيريوم يبهر المطورين', min: 0.1, max: 0.2 },
-  { scope: 'eth', type: 'neg', text: 'ثغرة أمنية تهز الثقة بعملة إيثيريوم', min: 0.1, max: 0.18 },
+  { scope: 'btc', type: 'pos', text: 'دولة كبرى تعلن اعتماد البيتكوين عملة رسمية!', min: 0.18, max: 0.38 },
+  { scope: 'btc', type: 'neg', text: 'حظر تعدين العملات الرقمية في دولة كبرى', min: 0.18, max: 0.35 },
+  { scope: 'eth', type: 'pos', text: 'تحديث ضخم لشبكة إيثيريوم يبهر المطورين', min: 0.15, max: 0.32 },
+  { scope: 'eth', type: 'neg', text: 'ثغرة أمنية تهز الثقة بعملة إيثيريوم', min: 0.15, max: 0.3 },
   { scope: 'gold', type: 'pos', text: 'توتر جيوسياسي يدفع المستثمرين نحو الذهب كملاذ آمن', min: 0.05, max: 0.09 },
   { scope: 'gold', type: 'neg', text: 'الدولار يقوى بشكل كبير.. تراجع في أسعار الذهب', min: 0.03, max: 0.06 },
   { scope: 'slv', type: 'pos', text: 'طلب صناعي كبير يرفع أسعار الفضة', min: 0.05, max: 0.1 },
   { scope: 'slv', type: 'neg', text: 'تراجع الطلب الصناعي على الفضة', min: 0.04, max: 0.08 },
-  { scope: 'oil', type: 'pos', text: 'أوبك+ تتفق على خفض الإنتاج بشكل كبير', min: 0.08, max: 0.15 },
-  { scope: 'oil', type: 'neg', text: 'فائض ضخم في المعروض النفطي العالمي', min: 0.08, max: 0.15 },
-  { scope: 'tsla', type: 'pos', text: 'تسلا تكسر الرقم القياسي لمبيعات الربع الحالي', min: 0.1, max: 0.2 },
-  { scope: 'tsla', type: 'neg', text: 'استدعاء واسع لسيارات تسلا بسبب عيب فني', min: 0.1, max: 0.18 },
+  { scope: 'oil', type: 'pos', text: 'أوبك+ تتفق على خفض الإنتاج بشكل كبير', min: 0.12, max: 0.24 },
+  { scope: 'oil', type: 'neg', text: 'فائض ضخم في المعروض النفطي العالمي', min: 0.12, max: 0.22 },
+  { scope: 'tsla', type: 'pos', text: 'تسلا تكسر الرقم القياسي لمبيعات الربع الحالي', min: 0.14, max: 0.28 },
+  { scope: 'tsla', type: 'neg', text: 'استدعاء واسع لسيارات تسلا بسبب عيب فني', min: 0.14, max: 0.25 },
   { scope: 'aapl', type: 'pos', text: 'آبل تطلق منتجاً ثورياً جديداً يبهر الأسواق', min: 0.06, max: 0.12 },
   { scope: 'aapl', type: 'neg', text: 'تراجع كبير في مبيعات آيفون بالسوق الصيني', min: 0.05, max: 0.1 },
-  { scope: 'amzn', type: 'pos', text: 'أمازون تحقق أرباحاً قياسية في موسم التسوق', min: 0.06, max: 0.12 },
-  { scope: 'amzn', type: 'neg', text: 'إضراب واسع لعمال مستودعات أمازون', min: 0.05, max: 0.1 },
+  { scope: 'amzn', type: 'pos', text: 'أمازون تحقق أرباحاً قياسية في موسم التسوق', min: 0.08, max: 0.15 },
+  { scope: 'amzn', type: 'neg', text: 'إضراب واسع لعمال مستودعات أمازون', min: 0.07, max: 0.13 },
   { scope: 'bank', type: 'pos', text: 'بنك الراجحي يعلن أرباحاً فصلية قوية', min: 0.04, max: 0.08 },
   { scope: 'bank', type: 'neg', text: 'فضيحة مالية تهز قطاع البنوك', min: 0.06, max: 0.12 },
-  { scope: 'air',  type: 'pos', text: 'إدريس تطلق تشكيلة جديدة وتحقق مبيعات قياسية', min: 0.06, max: 0.12 },
-  { scope: 'air',  type: 'neg', text: 'منافسة شديدة من علامات عالمية تضغط على مبيعات إدريس', min: 0.05, max: 0.1 },
+  { scope: 'air',  type: 'pos', text: 'الدريس تفتتح محطات وقود جديدة وتحقق نمواً قياسياً بالإيرادات', min: 0.1, max: 0.2 },
+  { scope: 'air',  type: 'neg', text: 'ارتفاع تكاليف التشغيل يضغط على هوامش أرباح الدريس', min: 0.09, max: 0.18 },
 ];
 
 // ------------------------------------------------------------
@@ -82,9 +82,11 @@ const CARDS = [
   { type: 'challenge', text: 'بطاقة تحدي ⚠️: "ضريبة النجاح" -3% من رصيدك النقدي', apply: p => { p.cash = Math.round(p.cash * 0.97); } },
 ];
 
-const SPREAD = 0.006;      // فرق سعر البيع/الشراء الكلي 0.6% (0.3% فوق ± 0.3% تحت منتصف السعر)
-const TICK_MS = 30000;     // تحديث الأسعار كل 30 ثانية
+const SPREAD = 0.006;        // فرق سعر البيع/الشراء الكلي 0.6% (0.3% فوق ± 0.3% تحت منتصف السعر)
+const TICK_MS = 11000;       // تحديث الأسعار كل 11 ثانية
 const START_CASH = 100000;
+const MARGIN_MS = 5 * 60000; // مدة التمويل المضاعف: 5 دقائق
+const MARGIN_MAX_USES = 3;   // عدد مرات التمويل المسموحة لكل لاعب
 
 function round2(n) { return Math.round(n * 100) / 100; }
 
@@ -144,15 +146,74 @@ function newPlayer(name) {
     name,
     cash: START_CASH,
     holdings: {},          // stockId -> qty (whole shares)
+    costBasis: {},         // stockId -> total $ invested in current open position
     orders: [],            // transaction history
     noSpreadNext: false,
     doubleDividend: false,
     frozenStock: null,
     frozenUntil: 0,
+    marginActive: false,
+    marginLoan: 0,
+    marginExpiresAt: 0,
+    marginUsesLeft: MARGIN_MAX_USES,
     history: [START_CASH],
     joinedAt: Date.now(),
     connected: true,
   };
+}
+
+function applyBuy(player, stock, qty, price) {
+  const cost = qty * price;
+  player.cash -= cost;
+  player.holdings[stock.id] = (player.holdings[stock.id] || 0) + qty;
+  player.costBasis[stock.id] = (player.costBasis[stock.id] || 0) + cost;
+  recordOrder(player, stock, 'buy', qty, price);
+}
+
+function applySell(player, stock, qty, price) {
+  const owned = player.holdings[stock.id] || 0;
+  const avgCost = owned > 0 ? (player.costBasis[stock.id] || 0) / owned : 0;
+  const proceeds = qty * price;
+  player.holdings[stock.id] = Math.max(0, owned - qty);
+  player.costBasis[stock.id] = Math.max(0, (player.costBasis[stock.id] || 0) - avgCost * qty);
+  if (player.holdings[stock.id] <= 0) { player.holdings[stock.id] = 0; player.costBasis[stock.id] = 0; }
+  player.cash += proceeds;
+  recordOrder(player, stock, 'sell', qty, price);
+}
+
+function activateMargin(game, player) {
+  if (player.marginActive) return { ok: false, msg: 'لديك تمويل مضاعف نشط بالفعل' };
+  if (player.marginUsesLeft <= 0) return { ok: false, msg: 'استخدمت كل مرات التمويل المضاعف المتاحة (3)' };
+  const loan = Math.round(player.cash);
+  if (loan <= 0) return { ok: false, msg: 'لا يوجد رصيد نقدي كافٍ لأخذ تمويل' };
+  player.cash += loan;
+  player.marginLoan = loan;
+  player.marginActive = true;
+  player.marginUsesLeft -= 1;
+  player.marginExpiresAt = Date.now() + MARGIN_MS;
+  const timerKey = 'margin_' + player.token;
+  game.timers[timerKey] = setTimeout(() => closeMargin(game, player), MARGIN_MS);
+  addNews(game, `🚀 ${player.name} فعّل تمويل مضاعف! رأس ماله تضاعف مؤقتاً لمدة 5 دقائق`, 'pos', null);
+  return { ok: true };
+}
+
+function closeMargin(game, player) {
+  if (!player.marginActive) return;
+  for (const s of game.stocks) {
+    const qty = player.holdings[s.id] || 0;
+    if (qty > 0) {
+      const sellPrice = s.price * (1 - SPREAD / 2);
+      applySell(player, s, qty, sellPrice);
+    }
+  }
+  player.cash -= player.marginLoan;
+  if (player.cash < 0) player.cash = 0;
+  player.marginActive = false;
+  player.marginLoan = 0;
+  player.marginExpiresAt = 0;
+  delete game.timers['margin_' + player.token];
+  addNews(game, `⏰ انتهت مهلة تمويل ${player.name} — تصفية تلقائية لمحفظته وسداد التمويل`, 'neg', null);
+  broadcast(game);
 }
 
 function recordOrder(player, stock, action, qty, price) {
@@ -175,6 +236,7 @@ function portfolioValue(game, player) {
     const qty = player.holdings[s.id] || 0;
     if (qty) v += qty * s.price;
   }
+  if (player.marginActive) v -= player.marginLoan; // القرض التزام يُخصم من صافي القيمة
   return Math.round(v);
 }
 
@@ -190,6 +252,7 @@ function leaderboard(game) {
         gainPct,
         holdings: p.holdings,
         connected: p.connected,
+        marginActive: p.marginActive,
       };
     })
     .sort((a, b) => b.value - a.value);
@@ -224,6 +287,11 @@ function playerState(game, socketId) {
   const p = game.players.get(socketId);
   if (!p) return null;
   const value = portfolioValue(game, p);
+  const avgCost = {};
+  for (const sid of Object.keys(p.holdings)) {
+    const qty = p.holdings[sid];
+    if (qty > 0) avgCost[sid] = round2((p.costBasis[sid] || 0) / qty);
+  }
   return {
     name: p.name,
     token: p.token,
@@ -231,10 +299,15 @@ function playerState(game, socketId) {
     value,
     gainPct: Math.round(((value - START_CASH) / START_CASH) * 10000) / 100,
     holdings: p.holdings,
+    avgCost,
     orders: p.orders,
     noSpreadNext: p.noSpreadNext,
     doubleDividend: p.doubleDividend,
     frozenStock: p.frozenUntil > Date.now() ? p.frozenStock : null,
+    marginActive: p.marginActive,
+    marginLoan: p.marginLoan,
+    marginExpiresAt: p.marginActive ? p.marginExpiresAt : 0,
+    marginUsesLeft: p.marginUsesLeft,
     history: p.history,
   };
 }
@@ -409,8 +482,9 @@ io.on('connection', socket => {
     game.stocks = freshStocks();
     game.news = [];
     for (const p of game.players.values()) {
-      p.cash = START_CASH; p.holdings = {}; p.orders = []; p.noSpreadNext = false;
+      p.cash = START_CASH; p.holdings = {}; p.costBasis = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0;
+      p.marginActive = false; p.marginLoan = 0; p.marginExpiresAt = 0; p.marginUsesLeft = MARGIN_MAX_USES;
       p.history = [START_CASH];
     }
     broadcast(game);
@@ -475,21 +549,29 @@ io.on('connection', socket => {
     if (action === 'buy') {
       const cost = qty * buyPrice;
       if (cost > player.cash + 0.01) { socket.emit('errorMsg', 'رصيدك النقدي لا يكفي لهذه الكمية'); return; }
-      player.cash -= cost;
-      player.holdings[stockId] = (player.holdings[stockId] || 0) + qty;
-      recordOrder(player, stock, 'buy', qty, buyPrice);
+      applyBuy(player, stock, qty, buyPrice);
+      socket.emit('trade:confirmed', { action: 'buy', qty, price: round2(buyPrice), total: round2(cost), stockName: stock.name, icon: stock.icon });
     } else if (action === 'sell') {
       const owned = player.holdings[stockId] || 0;
       if (qty > owned) { socket.emit('errorMsg', 'لا تملك هذه الكمية لبيعها'); return; }
       const proceeds = qty * sellPrice;
-      player.holdings[stockId] = owned - qty;
-      player.cash += proceeds;
-      recordOrder(player, stock, 'sell', qty, sellPrice);
+      applySell(player, stock, qty, sellPrice);
+      socket.emit('trade:confirmed', { action: 'sell', qty, price: round2(sellPrice), total: round2(proceeds), stockName: stock.name, icon: stock.icon });
     } else {
       return;
     }
 
     if (player.noSpreadNext) player.noSpreadNext = false;
+    broadcast(game);
+  });
+
+  socket.on('player:margin', ({ code }) => {
+    const game = games.get(code);
+    if (!game || game.status !== 'running') return;
+    const player = game.players.get(socket.id);
+    if (!player) return;
+    const res = activateMargin(game, player);
+    if (!res.ok) { socket.emit('errorMsg', res.msg); return; }
     broadcast(game);
   });
 
