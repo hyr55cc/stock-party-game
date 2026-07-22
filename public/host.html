@@ -3,19 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>بورصة الأصدقاء — شاشة العرض</title>
+<title>BIG MARGIN — شاشة العرض</title>
+<link rel="icon" href="/favicon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/common.js"></script>
 <style>
   :root{
-    --bg:#000000; --surface:#0d0f10; --surface2:#16181a; --border:#232629;
-    --text:#f5f6f7; --text-dim:#8a9099; --text-dim2:#5b6167;
+    --bg:#07080a; --surface:#101113; --surface2:#18191c; --border:#2a2b2f;
+    --text:#f0eee9; --text-dim:#9a968c; --text-dim2:#5f5c56;
     --green:#00c805; --green-dim:#00c80522; --red:#ff5252; --red-dim:#ff525222;
-    --accent:#5b8def;
+    --gold:#d4a853; --gold-bright:#eec46c; --gold-dim:#d4a85322;
+    --brand-red:#c42a2a; --brand-red-dim:#c42a2a22;
+    --accent:#d4a853;
   }
+  .display{ font-family:'Oswald',sans-serif; }
   *{box-sizing:border-box;}
   body{
     margin:0; font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
@@ -26,20 +30,22 @@
   .wrap{ padding:28px 44px; max-width:1600px; margin:0 auto; }
 
   /* ---------- LOBBY ---------- */
-  #lobby{ text-align:center; padding-top:5vh; }
+  #lobby{ text-align:center; padding-top:4vh; }
   .brand{ display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px; }
-  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--green); box-shadow:0 0 12px var(--green); }
+  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--gold); box-shadow:0 0 12px var(--gold-bright); }
   .brand span{ font-size:1.1em; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
-  #lobby h1{ font-size:2.6em; margin:4px 0 2px; font-weight:800; letter-spacing:-.02em; }
-  #lobby .sub{ color:var(--text-dim); font-size:1.1em; }
+  .logo-mark{ height:64px; margin:6px 0 10px; }
+  #lobby .sub{ color:var(--text-dim); font-size:1.15em; }
+  #lobby .sub b{ color:var(--gold-bright); font-weight:700; }
 
   .code-box{
     display:inline-flex; flex-direction:column; align-items:center; gap:6px;
-    margin:34px auto 20px; padding:26px 60px; background:var(--surface);
-    border:1px solid var(--border); border-radius:24px;
+    margin:30px auto 20px; padding:26px 60px; background:var(--surface);
+    border:1px solid var(--border); border-top:2px solid var(--gold); border-radius:24px;
+    box-shadow:0 0 0 1px rgba(212,168,83,.05), 0 20px 60px rgba(0,0,0,.5);
   }
   .code-box .label{ font-size:.85em; color:var(--text-dim); text-transform:uppercase; letter-spacing:.12em; font-weight:600; }
-  .code-box .code{ font-size:4.4em; letter-spacing:.18em; font-weight:700; color:var(--text); }
+  .code-box .code{ font-size:4.4em; letter-spacing:.18em; font-weight:700; color:var(--gold-bright); }
   #qrcode{ margin:6px auto 4px; padding:10px; background:#fff; border-radius:14px; display:inline-block; }
   .join-url{ color:var(--text-dim); font-size:1em; margin-top:2px; }
 
@@ -58,14 +64,14 @@
     font-size:1.05em; padding:12px 26px; border-radius:12px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
   }
-  .list-picker button.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .list-picker button.active{ background:var(--gold); color:#1a1200; border-color:var(--gold); }
 
   .duration-picker{ margin:20px 0 6px; display:flex; gap:10px; justify-content:center; }
   .duration-picker button{
     font-size:1.05em; padding:12px 28px; border-radius:12px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
   }
-  .duration-picker button.active{ background:var(--text); color:#000; border-color:var(--text); }
+  .duration-picker button.active{ background:var(--gold); color:#1a1200; border-color:var(--gold); }
   .custom-duration{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:16px; color:var(--text-dim); font-size:.95em; }
   .custom-duration input{
     width:90px; padding:9px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface);
@@ -74,15 +80,36 @@
   .custom-duration input:focus{ outline:none; border-color:var(--green); }
   #startBtn{
     font-size:1.25em; padding:16px 64px; border-radius:16px; border:none; margin-top:22px;
-    background:var(--green); color:#00230a; font-weight:700; cursor:pointer; transition:.15s;
+    background:linear-gradient(135deg, var(--gold-bright), var(--gold)); color:#1a1200; font-weight:800; cursor:pointer; transition:.15s;
+    letter-spacing:.02em; box-shadow:0 10px 40px rgba(212,168,83,.25);
   }
-  #startBtn:disabled{ opacity:.3; cursor:not-allowed; }
-  #startBtn:not(:disabled):hover{ filter:brightness(1.08); }
+  #startBtn:disabled{ opacity:.3; cursor:not-allowed; box-shadow:none; animation:none; }
+  #startBtn:not(:disabled){ animation:ctaGlow 2.2s ease-in-out infinite; }
+  #startBtn:not(:disabled):hover{ filter:brightness(1.08); transform:translateY(-1px); }
+  @keyframes ctaGlow{ 0%,100%{ box-shadow:0 10px 40px rgba(212,168,83,.25); } 50%{ box-shadow:0 10px 55px rgba(212,168,83,.55); } }
+
+  /* ---------- PRICE TICKER TAPE ---------- */
+  .price-ticker{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:8px 0; margin-bottom:16px; overflow:hidden; white-space:nowrap;
+  }
+  .price-ticker .ptrack{ display:inline-block; animation:ptScroll 40s linear infinite; }
+  .price-ticker .pt-item{ display:inline-flex; align-items:center; gap:6px; padding:0 22px; font-size:.95em; font-family:'IBM Plex Mono',monospace; }
+  .price-ticker .pt-item .ico{ font-size:1em; }
+  .price-ticker .pt-item .up{ color:var(--green); } .price-ticker .pt-item .down{ color:var(--red); }
+  @keyframes ptScroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+
+  body.flash-pos::after, body.flash-neg::after{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:80; animation:flashFade .6s ease-out forwards;
+  }
+  body.flash-pos::after{ background:radial-gradient(circle at 50% 0%, rgba(0,200,5,.18), transparent 60%); }
+  body.flash-neg::after{ background:radial-gradient(circle at 50% 0%, rgba(196,42,42,.2), transparent 60%); }
+  @keyframes flashFade{ from{ opacity:1; } to{ opacity:0; } }
 
   /* ---------- GAME ---------- */
   .topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
-  .topbar .brand h2{ font-size:1.3em; margin:0; font-weight:700; display:flex; align-items:center; gap:10px; }
-  .topbar .brand .code-pill{ font-size:.6em; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:4px 10px; border-radius:8px; }
+  .topbar .brand{ margin-bottom:0; }
+  .topbar .brand .code-pill{ font-size:.8em; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:4px 10px; border-radius:8px; }
   #timer{
     font-size:2em; font-weight:700; padding:10px 28px; border-radius:14px;
     background:var(--surface); border:1px solid var(--border); color:var(--text);
@@ -98,7 +125,7 @@
   #board{ display:flex; flex-direction:column; }
   .board-row{ display:flex; align-items:center; gap:12px; padding:12px 6px; border-bottom:1px solid var(--border); }
   .board-row:last-child{ border-bottom:none; }
-  .board-row.rank1{ background:rgba(255,209,102,.05); border-radius:12px; }
+  .board-row.rank1{ background:var(--gold-dim); border-radius:12px; border:1px solid rgba(212,168,83,.25); }
   .board-row .rank{ font-size:1.05em; width:24px; color:var(--text-dim2); font-weight:700; flex-shrink:0; }
   .board-row .avatar{ width:36px; height:36px; font-size:.95em; flex-shrink:0; }
   .board-row .info{ flex:1; min-width:0; }
@@ -161,14 +188,14 @@
   .podium-slot .pname{ font-weight:700; font-size:1.1em; }
   .podium-slot .pval{ color:var(--green); font-weight:700; }
   .podium-bar{ width:150px; border-radius:14px 14px 0 0; background:var(--surface); border:1px solid var(--border); border-bottom:none; display:flex; align-items:flex-start; justify-content:center; padding-top:10px; font-weight:800; font-size:1.4em; }
-  .p1 .podium-bar{ height:150px; background:linear-gradient(180deg,#1c1a08,var(--surface)); border-color:#3a3312; color:#ffd166; }
+  .p1 .podium-bar{ height:150px; background:linear-gradient(180deg,#241d09,var(--surface)); border-color:#4a3a12; color:var(--gold-bright); }
   .p2 .podium-bar{ height:105px; color:var(--text-dim); }
   .p3 .podium-bar{ height:75px; color:#cd7f32; }
   .rest-list{ max-width:560px; margin:0 auto; }
   .final-row{ display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); font-size:1.1em; }
   .final-row:last-child{ border-bottom:none; }
-  #resetBtn{ margin-top:34px; font-size:1.1em; padding:14px 40px; border-radius:14px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-weight:600; }
-  #resetBtn:hover{ border-color:var(--text-dim); }
+  #resetBtn{ margin-top:34px; font-size:1.1em; padding:14px 40px; border-radius:14px; border:1px solid var(--gold); background:transparent; color:var(--gold-bright); cursor:pointer; font-weight:700; }
+  #resetBtn:hover{ background:var(--gold-dim); }
 </style>
 </head>
 <body>
@@ -187,8 +214,8 @@
   <!-- LOBBY -->
   <div id="lobby">
     <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
-    <h1>📈 بورصة الأصدقاء</h1>
-    <div class="sub">افتح جوالك، امسح الرمز، وانضم للسوق</div>
+    <img class="logo-mark" src="/logo.png" alt="BIG MARGIN" />
+    <div class="sub">افتح جوالك، امسح الرمز، وادخل <b>السوق</b></div>
     <div class="code-box">
       <div class="label">كود الانضمام</div>
       <div class="code mono" id="gameCode">----</div>
@@ -223,9 +250,10 @@
   <!-- GAME -->
   <div id="game" class="hidden">
     <div class="topbar">
-      <div class="brand"><h2>📈 بورصة الأصدقاء <span class="code-pill mono" id="codeSmall"></span></h2></div>
+      <div class="brand"><img src="/logo.png" alt="BIG MARGIN" style="height:32px;" /><span class="code-pill mono" id="codeSmall"></span></div>
       <div id="timer" class="mono">30:00</div>
     </div>
+    <div class="price-ticker"><div class="ptrack" id="priceTicker"></div></div>
     <div class="main-grid">
       <div class="panel">
         <div class="panel-hdr"><h3>المتصدرون</h3></div>
@@ -244,7 +272,7 @@
 
   <!-- END -->
   <div id="end" class="hidden">
-    <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
+    <img class="logo-mark" src="/logo.png" alt="BIG MARGIN" style="height:48px;" />
     <h1>🏁 انتهت اللعبة</h1>
     <div class="podium" id="podium"></div>
     <div class="rest-list" id="restList"></div>
@@ -328,6 +356,9 @@ document.getElementById('bnClose').addEventListener('click', hideBreakingNews);
 socket.on('news:event', ({ text, type }) => {
   showBreakingNews(text, type);
   playChime(type);
+  document.body.classList.remove('flash-pos', 'flash-neg');
+  void document.body.offsetWidth;
+  document.body.classList.add(type === 'pos' ? 'flash-pos' : 'flash-neg');
 });
 
 socket.on('state:update', state => {
@@ -379,6 +410,9 @@ socket.on('state:update', state => {
       </div>`).join('');
     state.stocks.forEach(s => drawCandles(document.getElementById('spark-'+s.id), s.candles, 22));
 
+    const ptItems = state.stocks.map(s => `<span class="pt-item"><span class="ico">${s.icon}</span>${s.name} <b class="mono">${fmtMoney(s.price)}</b> <span class="${s.changePct>=0?'up':'down'}">${s.changePct>=0?'▲':'▼'}${Math.abs(s.changePct)}%</span></span>`).join('');
+    document.getElementById('priceTicker').innerHTML = ptItems + ptItems;
+
     if (state.news.length) {
       const track = document.getElementById('newsTrack');
       track.innerHTML = state.news.map(n => `<span class="${n.type==='pos'?'news-pos':'news-neg'}">${n.type==='pos'?'▲':'▼'} ${escapeHtml(n.text)}</span>`).join('&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;');
@@ -392,6 +426,7 @@ function renderEnd(results){
   document.getElementById('lobby').classList.add('hidden');
   document.getElementById('game').classList.add('hidden');
   document.getElementById('end').classList.remove('hidden');
+  confettiBurst(4000, 180);
   const top3 = results.slice(0,3);
   const order = [1,0,2].filter(i => top3[i]);
   const podium = document.getElementById('podium');

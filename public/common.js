@@ -84,6 +84,56 @@ function drawCandles(canvas, candles, count) {
 }
 
 // ------------------------------------------------------------
+//  انفجار قصاصات ورقية احتفالي (confetti) — بدون مكتبات خارجية
+// ------------------------------------------------------------
+const CONFETTI_COLORS = ['#d4a853', '#eec46c', '#c42a2a', '#00c805', '#f0eee9'];
+function confettiBurst(durationMs, particleCount) {
+  durationMs = durationMs || 3200;
+  particleCount = particleCount || 140;
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200;';
+  document.body.appendChild(canvas);
+  const dpr = window.devicePixelRatio || 1;
+  const w = window.innerWidth, h = window.innerHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const particles = [];
+  for (let i = 0; i < particleCount; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: -20 - Math.random() * h * 0.4,
+      vx: (Math.random() - 0.5) * 2.2,
+      vy: 2 + Math.random() * 3.5,
+      size: 5 + Math.random() * 7,
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random() - 0.5) * 0.25,
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      shape: Math.random() > 0.5 ? 'rect' : 'circle',
+    });
+  }
+  const start = performance.now();
+  function frame(now) {
+    const elapsed = now - start;
+    ctx.clearRect(0, 0, w, h);
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vrot; p.vy += 0.01;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      if (p.shape === 'rect') ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      else { ctx.beginPath(); ctx.arc(0, 0, p.size / 2.4, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+    if (elapsed < durationMs) requestAnimationFrame(frame);
+    else canvas.remove();
+  }
+  requestAnimationFrame(frame);
+}
+
+// ------------------------------------------------------------
 //  نغمة قصيرة عند الأخبار (بدون ملفات صوتية خارجية)
 // ------------------------------------------------------------
 let _audioCtx;
