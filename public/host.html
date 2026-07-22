@@ -6,20 +6,20 @@
 <title>BIG MARGIN — شاشة العرض</title>
 <link rel="icon" href="/favicon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/common.js"></script>
 <style>
   :root{
-    --bg:#07080a; --surface:#101113; --surface2:#18191c; --border:#2a2b2f;
-    --text:#f0eee9; --text-dim:#9a968c; --text-dim2:#5f5c56;
+    --bg:#0b0f14; --surface:#111827; --surface2:#1f2937; --border:#2b3750;
+    --text:#e5e7eb; --text-dim:#9aa1ae; --text-dim2:#5f6773;
     --green:#00c805; --green-dim:#00c80522; --red:#ff5252; --red-dim:#ff525222;
-    --gold:#d4a853; --gold-bright:#eec46c; --gold-dim:#d4a85322;
+    --gold:#d4af37; --gold-bright:#e8c564; --gold-dim:#d4af3722;
     --brand-red:#c42a2a; --brand-red-dim:#c42a2a22;
-    --accent:#d4a853;
+    --accent:#d4af37;
   }
-  .display{ font-family:'Oswald',sans-serif; }
+  .display{ font-family:'Playfair Display',serif; }
   *{box-sizing:border-box;}
   body{
     margin:0; font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
@@ -35,6 +35,7 @@
   .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--gold); box-shadow:0 0 12px var(--gold-bright); }
   .brand span{ font-size:1.1em; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
   .logo-mark{ height:64px; margin:6px 0 10px; }
+  .tagline{ color:var(--gold); font-size:.8em; letter-spacing:.25em; font-weight:600; margin-bottom:18px; }
   #lobby .sub{ color:var(--text-dim); font-size:1.15em; }
   #lobby .sub b{ color:var(--gold-bright); font-weight:700; }
 
@@ -215,6 +216,7 @@
   <div id="lobby">
     <div class="brand"><span class="dot"></span><span>Friends Exchange</span></div>
     <img class="logo-mark" src="/logo.png" alt="BIG MARGIN" />
+    <div class="tagline mono">TRADE · COMPETE · DOMINATE</div>
     <div class="sub">افتح جوالك، امسح الرمز، وادخل <b>السوق</b></div>
     <div class="code-box">
       <div class="label">كود الانضمام</div>
@@ -273,7 +275,7 @@
   <!-- END -->
   <div id="end" class="hidden">
     <img class="logo-mark" src="/logo.png" alt="BIG MARGIN" style="height:48px;" />
-    <h1>🏁 انتهت اللعبة</h1>
+    <h1 class="display">🏁 انتهت اللعبة</h1>
     <div class="podium" id="podium"></div>
     <div class="rest-list" id="restList"></div>
     <button id="resetBtn">لعبة جديدة</button>
@@ -381,10 +383,11 @@ socket.on('state:update', state => {
     timerEl.classList.toggle('warn', state.timeLeftMs < 60000);
 
     const board = document.getElementById('board');
+    const medals = ['🥇','🥈','🥉'];
     board.innerHTML = state.players.map((p, i) => {
       const cls = p.gainPct > 0 ? 'up' : (p.gainPct < 0 ? 'down' : 'flat');
       return `<div class="board-row ${i===0?'rank1':''}">
-        <span class="rank mono">#${i+1}</span>
+        <span class="rank mono">${medals[i] || '#'+(i+1)}</span>
         <span class="avatar" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
         <span class="info">
           <div class="name">${escapeHtml(p.name)}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</div>
@@ -436,7 +439,7 @@ function renderEnd(results){
       <span class="avatar" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
       <div class="pname">${escapeHtml(p.name)}</div>
       <div class="pval mono">${fmtMoney(p.value)}</div>
-      <div class="podium-bar mono">${i+1}</div>
+      <div class="podium-bar mono">${['🥇','🥈','🥉'][i]}</div>
     </div>`;
   }).join('');
   const rest = results.slice(3);
