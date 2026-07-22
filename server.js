@@ -18,20 +18,58 @@ app.get('/', (req, res) => res.redirect('/host.html'));
 app.get('/healthz', (req, res) => res.send('ok'));
 
 // ------------------------------------------------------------
-//  بيانات الأسهم الأساسية
+//  بيانات الأسهم الأساسية — 3 قوائم يختار المضيف واحدة قبل البدء
 // ------------------------------------------------------------
-const STOCK_DEFS = [
-  { id: 'btc',  name: 'بيتكوين',        icon: '₿', price: 60000, volatility: 0.10, dividend: false },
-  { id: 'eth',  name: 'إيثيريوم',       icon: 'Ξ', price: 3000,  volatility: 0.11, dividend: false },
-  { id: 'gold', name: 'ذهب',            icon: '🥇', price: 2000,  volatility: 0.012, dividend: false },
-  { id: 'slv',  name: 'فضة',            icon: '🥈', price: 25,    volatility: 0.02,  dividend: false },
-  { id: 'oil',  name: 'نفط',            icon: '🛢️', price: 80,    volatility: 0.05,  dividend: false },
-  { id: 'tsla', name: 'تسلا',           icon: '🚗', price: 250,   volatility: 0.08,  dividend: false },
-  { id: 'aapl', name: 'آبل',            icon: '🍎', price: 190,   volatility: 0.02,  dividend: true  },
-  { id: 'amzn', name: 'أمازون',         icon: '📦', price: 180,   volatility: 0.03,  dividend: false },
-  { id: 'bank', name: 'بنك الراجحي',    icon: '🏦', price: 50,    volatility: 0.015, dividend: true  },
-  { id: 'air',  name: 'الدريس',         icon: '⛽', price: 30,    volatility: 0.07,  dividend: false },
-];
+const STOCK_LISTS = {
+  favorites: [
+    { id: 'btc',  name: 'بيتكوين',        icon: '₿', price: 60000, volatility: 0.10, dividend: false },
+    { id: 'eth',  name: 'إيثيريوم',       icon: 'Ξ', price: 3000,  volatility: 0.11, dividend: false },
+    { id: 'gold', name: 'ذهب',            icon: '🥇', price: 2000,  volatility: 0.012, dividend: false },
+    { id: 'slv',  name: 'فضة',            icon: '🥈', price: 25,    volatility: 0.02,  dividend: false },
+    { id: 'oil',  name: 'نفط',            icon: '🛢️', price: 80,    volatility: 0.05,  dividend: false },
+    { id: 'tsla', name: 'تسلا',           icon: '🚗', price: 250,   volatility: 0.08,  dividend: false },
+    { id: 'aapl', name: 'آبل',            icon: '🍎', price: 190,   volatility: 0.02,  dividend: true  },
+    { id: 'amzn', name: 'أمازون',         icon: '📦', price: 180,   volatility: 0.03,  dividend: false },
+    { id: 'bank', name: 'بنك الراجحي',    icon: '🏦', price: 50,    volatility: 0.015, dividend: true  },
+    { id: 'air',  name: 'الدريس',         icon: '⛽', price: 30,    volatility: 0.07,  dividend: false },
+    { id: 'sabicagri', name: 'سابك للمغذيات', icon: '🌾', price: 90, volatility: 0.03, dividend: true },
+    { id: 'habib', name: 'الحبيب',        icon: '🏥', price: 200,   volatility: 0.025, dividend: false },
+  ],
+  tasi: [
+    { id: 'aramco', name: 'أرامكو السعودية', icon: '🛢️', price: 30,  volatility: 0.02,  dividend: true  },
+    { id: 'sabic',   name: 'سابك',            icon: '🏭', price: 90,  volatility: 0.03,  dividend: true  },
+    { id: 'snb',     name: 'الأهلي السعودي',  icon: '🏦', price: 40,  volatility: 0.025, dividend: true  },
+    { id: 'stc',     name: 'الاتصالات السعودية', icon: '📶', price: 45, volatility: 0.02, dividend: true  },
+    { id: 'maaden',  name: 'معادن',           icon: '⛏️', price: 55,  volatility: 0.045, dividend: false },
+    { id: 'jarir',   name: 'جرير',            icon: '📚', price: 150, volatility: 0.03,  dividend: true  },
+    { id: 'almarai', name: 'المراعي',          icon: '🥛', price: 55,  volatility: 0.02,  dividend: false },
+    { id: 'kayan',   name: 'كيان السعودية',    icon: '🧪', price: 12,  volatility: 0.05,  dividend: false },
+    { id: 'yamama',  name: 'إسمنت اليمامة',    icon: '🏗️', price: 30,  volatility: 0.035, dividend: true  },
+    { id: 'savola',  name: 'صافولا',           icon: '🍬', price: 40,  volatility: 0.03,  dividend: true  },
+    { id: 'albilad', name: 'بنك البلاد',       icon: '🏦', price: 30,  volatility: 0.03,  dividend: true  },
+    { id: 'flynas',  name: 'طيران ناس',        icon: '✈️', price: 100, volatility: 0.06,  dividend: false },
+  ],
+  nasdaq: [
+    { id: 'msft', name: 'مايكروسوفت',  icon: '🪟', price: 420, volatility: 0.02,  dividend: true  },
+    { id: 'googl', name: 'جوجل',        icon: '🔍', price: 175, volatility: 0.025, dividend: false },
+    { id: 'nvda', name: 'إنفيديا',      icon: '🎮', price: 130, volatility: 0.06,  dividend: false },
+    { id: 'meta', name: 'ميتا',         icon: '📘', price: 560, volatility: 0.035, dividend: false },
+    { id: 'nflx', name: 'نتفليكس',      icon: '🎬', price: 680, volatility: 0.04,  dividend: false },
+    { id: 'aapl', name: 'آبل',          icon: '🍎', price: 190, volatility: 0.02,  dividend: true  },
+    { id: 'amzn', name: 'أمازون',       icon: '📦', price: 180, volatility: 0.03,  dividend: false },
+    { id: 'tsla', name: 'تسلا',         icon: '🚗', price: 250, volatility: 0.08,  dividend: false },
+    { id: 'intc', name: 'إنتل',         icon: '💻', price: 30,  volatility: 0.04,  dividend: true  },
+    { id: 'amd',  name: 'إيه إم دي',    icon: '🔧', price: 150, volatility: 0.05,  dividend: false },
+    { id: 'pypl', name: 'بايبال',       icon: '💳', price: 65,  volatility: 0.035, dividend: false },
+    { id: 'sbux', name: 'ستاربكس',      icon: '☕', price: 90,  volatility: 0.025, dividend: true  },
+  ],
+};
+const LIST_META = {
+  favorites: { label: '⭐ المفضلة' },
+  tasi:      { label: '🇸🇦 تاسي' },
+  nasdaq:    { label: '🇺🇸 ناسداك' },
+};
+function stockDefsFor(listKey) { return STOCK_LISTS[listKey] || STOCK_LISTS.favorites; }
 
 // ------------------------------------------------------------
 //  الأخبار (عامة / خاصة بسهم)
@@ -64,6 +102,28 @@ const NEWS_POOL = [
   { scope: 'air',  type: 'neg', text: 'ارتفاع تكاليف التشغيل يضغط على هوامش أرباح الدريس', min: 0.09, max: 0.18 },
 ];
 
+// قوالب أخبار عامة تُطبّق على أي سهم (تغطي القوائم الجديدة: تاسي وناسداك وأي سهم اكتتاب)
+const GENERIC_STOCK_NEWS = [
+  { type: 'pos', text: 'يعلن أرباحاً فصلية تفوق توقعات المحللين', min: 0.05, max: 0.12 },
+  { type: 'pos', text: 'يوقع صفقة استحواذ كبرى ترفع معنويات المستثمرين', min: 0.08, max: 0.16 },
+  { type: 'pos', text: 'ترقية من وكالة تصنيف عالمية تدفع السهم للارتفاع', min: 0.04, max: 0.1  },
+  { type: 'pos', text: 'توسع كبير في أسواق جديدة يبهر المستثمرين', min: 0.06, max: 0.13 },
+  { type: 'neg', text: 'تراجع حاد في الإيرادات يثير قلق المستثمرين', min: 0.05, max: 0.12 },
+  { type: 'neg', text: 'تحقيق تنظيمي مفاجئ يضغط على السهم', min: 0.06, max: 0.14 },
+  { type: 'neg', text: 'استقالة الرئيس التنفيذي تربك الأسواق', min: 0.04, max: 0.1  },
+  { type: 'neg', text: 'تراجع تصنيفها الائتماني يثير قلق المستثمرين', min: 0.05, max: 0.11 },
+];
+
+// يبني حوض أخبار خاص باللعبة الحالية: الأخبار العامة + المخصصة لأسهم موجودة فعلاً + قوالب عامة لكل سهم
+function buildNewsPoolForGame(game) {
+  const pool = NEWS_POOL.filter(item => item.scope === 'global' || game.stocks.some(s => s.id === item.scope));
+  for (const s of game.stocks) addGenericNewsForStock(pool, s);
+  return pool;
+}
+function addGenericNewsForStock(pool, stock) {
+  for (const g of GENERIC_STOCK_NEWS) pool.push({ scope: stock.id, type: g.type, text: g.text, min: g.min, max: g.max });
+}
+
 // ------------------------------------------------------------
 //  بطاقات فرصة / تحدي
 // ------------------------------------------------------------
@@ -75,7 +135,7 @@ const CARDS = [
   { type: 'challenge',   text: 'بطاقة تحدي ⚠️: تجميد سهم عشوائي من محفظتك لمدة 30 ثانية', apply: (p, game) => {
       const owned = Object.keys(p.holdings).filter(id => p.holdings[id] > 0);
       const target = owned.length ? owned[Math.floor(Math.random() * owned.length)]
-                                   : STOCK_DEFS[Math.floor(Math.random() * STOCK_DEFS.length)].id;
+                                   : game.stocks[Math.floor(Math.random() * game.stocks.length)].id;
       p.frozenStock = target;
       p.frozenUntil = Date.now() + 30000;
     } },
@@ -111,8 +171,8 @@ function makeCandle(open, close) {
   return { o: round2(open), h: round2(high), l: round2(low), c: round2(close) };
 }
 
-function freshStocks() {
-  return STOCK_DEFS.map(s => ({
+function freshStocks(listKey) {
+  return stockDefsFor(listKey).map(s => ({
     ...s,
     startPrice: s.price,
     prevPrice: s.price,
@@ -158,9 +218,11 @@ function createGame(hostSocketId) {
     durationMs: 30 * 60000,
     startTime: null,
     endTime: null,
-    stocks: freshStocks(),
+    listKey: 'favorites',
+    stocks: freshStocks('favorites'),
     players: new Map(),    // socketId -> player
     news: [],              // recent news log
+    newsPool: [],
     timers: {},
   };
   games.set(code, game);
@@ -221,6 +283,11 @@ function activateMargin(game, player) {
   player.marginExpiresAt = Date.now() + MARGIN_MS;
   const timerKey = 'margin_' + player.token;
   game.timers[timerKey] = setTimeout(() => closeMargin(game, player), MARGIN_MS);
+  const warnDelay = Math.max(0, MARGIN_MS - 30000);
+  game.timers[timerKey + '_warn'] = setTimeout(() => {
+    if (!player.marginActive) return;
+    io.to(player.id).emit('news:event', { text: '⚠️ تنبيه: تمويلك المضاعف سينتهي خلال 30 ثانية! سيتم تسييل محفظتك تلقائياً وسداد القرض', type: 'neg' });
+  }, warnDelay);
   addNews(game, `🚀 ${player.name} فعّل تمويل مضاعف! رأس ماله تضاعف مؤقتاً لمدة 5 دقائق`, 'pos', null);
   return { ok: true };
 }
@@ -239,7 +306,9 @@ function closeMargin(game, player) {
   player.marginActive = false;
   player.marginLoan = 0;
   player.marginExpiresAt = 0;
+  clearTimeout(game.timers['margin_' + player.token + '_warn']);
   delete game.timers['margin_' + player.token];
+  delete game.timers['margin_' + player.token + '_warn'];
   addNews(game, `⏰ انتهت مهلة تمويل ${player.name} — تصفية تلقائية لمحفظته وسداد التمويل`, 'neg', null);
   broadcast(game);
 }
@@ -380,7 +449,8 @@ function tickPrices(game) {
 }
 
 function triggerNews(game) {
-  const item = NEWS_POOL[Math.floor(Math.random() * NEWS_POOL.length)];
+  const pool = game.newsPool && game.newsPool.length ? game.newsPool : NEWS_POOL;
+  const item = pool[Math.floor(Math.random() * pool.length)];
   const pct = item.min + Math.random() * (item.max - item.min);
   const sign = item.type === 'pos' ? 1 : -1;
   if (item.scope === 'global') {
@@ -419,7 +489,7 @@ function payDividends(game) {
       paidAny = true;
     }
   }
-  if (paidAny) addNews(game, '💰 توزيعات أرباح! حاملو أسهم آبل وبنك الراجحي حصلوا على أرباح نقدية', 'pos', null);
+  if (paidAny) addNews(game, '💰 توزيعات أرباح! حاملو الأسهم الموزّعة للأرباح 💵 حصلوا على أرباح نقدية', 'pos', null);
 }
 
 function drawCard(game) {
@@ -432,12 +502,16 @@ function drawCard(game) {
   addNews(game, `🎴 ${player.name} سحب ${card.text}`, card.type === 'opportunity' ? 'pos' : 'neg', null);
 }
 
-function startGame(game, durationMs) {
+function startGame(game, durationMs, listKey) {
   game.status = 'running';
   game.durationMs = durationMs;
   game.startTime = Date.now();
   game.endTime = game.startTime + durationMs;
+  game.listKey = STOCK_LISTS[listKey] ? listKey : (game.listKey || 'favorites');
+  game.stocks = freshStocks(game.listKey);
   pickWildStocks(game, durationMs);
+  game.newsPool = buildNewsPoolForGame(game);
+  scheduleIPO(game, durationMs);
 
   game.timers.price = setInterval(() => { tickPrices(game); broadcast(game); }, TICK_MS);
   scheduleNews(game);
@@ -448,6 +522,31 @@ function startGame(game, durationMs) {
 
   broadcast(game);
 }
+
+// يضيف سهم اكتتاب مفاجئ "شركة نصف الثلث" في وقت عشوائي أثناء اللعبة
+function scheduleIPO(game, durationMs) {
+  const minDelay = durationMs * 0.2;
+  const maxDelay = durationMs * 0.7;
+  const delay = Math.max(8000, minDelay + Math.random() * (maxDelay - minDelay));
+  game.timers.ipo = setTimeout(() => {
+    if (game.status !== 'running') return;
+    const price = round2(15 + Math.random() * 15);
+    const ipoStock = {
+      id: 'ipo', name: 'شركة نصف الثلث', icon: '🎪',
+      price, startPrice: price, prevPrice: price, changePct: 0,
+      volatility: 0.09, dividend: false,
+      minPrice: round2(price * 0.05), maxPrice: round2(price * 15),
+      drift: 0, isDoomed: false, isMooning: false,
+      candles: [{ o: price, h: price, l: price, c: price }],
+    };
+    game.stocks.push(ipoStock);
+    addGenericNewsForStock(game.newsPool, ipoStock);
+    addNews(game, `🎉 اكتتاب مفاجئ! سهم "نصف الثلث" 🎪 يبدأ التداول الآن بسعر ${fmtDollar(price)}`, 'pos', ipoStock.id);
+    broadcast(game);
+  }, delay);
+}
+
+function fmtDollar(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
 
 function scheduleNews(game) {
   const delay = 20000 + Math.random() * 20000; // 20-40s
@@ -498,11 +597,11 @@ io.on('connection', socket => {
     broadcast(game);
   });
 
-  socket.on('host:start', ({ code, durationMs }) => {
+  socket.on('host:start', ({ code, durationMs, listKey }) => {
     const game = games.get(code);
     if (!game || game.status !== 'lobby') return;
     if (game.players.size < 1) { socket.emit('errorMsg', 'أضف لاعباً واحداً على الأقل قبل البدء'); return; }
-    startGame(game, durationMs || 30 * 60000);
+    startGame(game, durationMs || 30 * 60000, listKey);
   });
 
   socket.on('host:reset', ({ code }) => {
@@ -510,8 +609,9 @@ io.on('connection', socket => {
     if (!game) return;
     clearAllTimers(game);
     game.status = 'lobby';
-    game.stocks = freshStocks();
+    game.stocks = freshStocks(game.listKey || 'favorites');
     game.news = [];
+    game.newsPool = [];
     for (const p of game.players.values()) {
       p.cash = START_CASH; p.holdings = {}; p.costBasis = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0;

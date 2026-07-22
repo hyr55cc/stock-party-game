@@ -53,7 +53,14 @@
   @keyframes pop{ from{transform:scale(.7); opacity:0;} to{transform:scale(1); opacity:1;} }
   .empty-hint{ color:var(--text-dim2); font-size:1em; }
 
-  .duration-picker{ margin:36px 0 6px; display:flex; gap:10px; justify-content:center; }
+  .list-picker{ margin:38px 0 6px; display:flex; gap:10px; justify-content:center; }
+  .list-picker button{
+    font-size:1.05em; padding:12px 26px; border-radius:12px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
+  }
+  .list-picker button.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .duration-picker{ margin:20px 0 6px; display:flex; gap:10px; justify-content:center; }
   .duration-picker button{
     font-size:1.05em; padding:12px 28px; border-radius:12px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
@@ -83,7 +90,7 @@
   #timer.warn{ color:var(--red); border-color:var(--red); animation:pulse 1s infinite; }
   @keyframes pulse{ 50%{ opacity:.45; } }
 
-  .main-grid{ display:grid; grid-template-columns:1fr 1.3fr; gap:20px; }
+  .main-grid{ display:grid; grid-template-columns:0.8fr 1.7fr; gap:20px; }
   .panel{ background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:18px 20px 8px; }
   .panel-hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding-bottom:12px; border-bottom:1px solid var(--border); }
   .panel-hdr h3{ margin:0; color:var(--text-dim); font-size:.85em; text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
@@ -192,6 +199,13 @@
     <h3 class="section-lbl">اللاعبون المنضمّون</h3>
     <div class="players-grid" id="playersGrid"><div class="empty-hint">بانتظار اللاعبين...</div></div>
 
+    <h3 class="section-lbl">قائمة الأسهم</h3>
+    <div class="list-picker">
+      <button data-list="favorites" class="active">⭐ المفضلة</button>
+      <button data-list="tasi">🇸🇦 تاسي</button>
+      <button data-list="nasdaq">🇺🇸 ناسداك</button>
+    </div>
+
     <div class="duration-picker">
       <button data-min="30" class="active">30 دقيقة</button>
       <button data-min="45">45 دقيقة</button>
@@ -243,6 +257,7 @@
 const socket = io();
 let currentCode = null, hostToken = null;
 let selectedMinutes = 30;
+let selectedList = 'favorites';
 
 // resume existing hosted game if we have one saved, else create new
 const savedCode = localStorage.getItem('spg_host_code');
@@ -278,8 +293,16 @@ document.getElementById('customMinutes').addEventListener('input', e => {
   }
 });
 
+document.querySelectorAll('.list-picker button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.list-picker button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedList = btn.dataset.list;
+  });
+});
+
 document.getElementById('startBtn').addEventListener('click', () => {
-  socket.emit('host:start', { code: currentCode, durationMs: selectedMinutes * 60000 });
+  socket.emit('host:start', { code: currentCode, durationMs: selectedMinutes * 60000, listKey: selectedList });
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {

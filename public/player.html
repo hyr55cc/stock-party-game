@@ -80,6 +80,11 @@
   .up{ color:var(--green); } .down{ color:var(--red); }
   .stock-tile.frozen{ opacity:.4; }
   .frozen-badge{ font-size:.7em; color:#ffb020; margin-top:6px; }
+  .stock-tile.owned{ border-color:var(--green); background:linear-gradient(180deg, rgba(0,200,5,.09), rgba(0,200,5,.02)); box-shadow:inset 0 0 0 1px rgba(0,200,5,.25); }
+  .stock-tile.owned .st-name{ color:var(--green); }
+
+  .margin-btn.urgent{ border-color:var(--red); color:var(--red); background:rgba(255,82,82,.12); animation:marginPulse 1s infinite; }
+  @keyframes marginPulse{ 50%{ opacity:.5; } }
 
   .liquidate-btn{
     width:100%; padding:12px; border-radius:12px; border:1px solid var(--red); background:rgba(255,82,82,.08);
@@ -346,11 +351,13 @@ function updateMarginBtn(){
   if (!myState) return;
   if (myState.marginActive) {
     const left = Math.max(0, myState.marginExpiresAt - Date.now());
-    btn.textContent = '⏳ تمويل نشط ' + fmtTime(left);
+    btn.textContent = (left <= 30000 ? '⚠️ يُغلق خلال ' : '⏳ تمويل نشط ') + fmtTime(left);
     btn.disabled = true;
     btn.classList.add('active');
+    btn.classList.toggle('urgent', left <= 30000);
   } else {
     btn.classList.remove('active');
+    btn.classList.remove('urgent');
     btn.disabled = myState.marginUsesLeft <= 0;
     btn.textContent = '🚀 تمويل ×2 (' + myState.marginUsesLeft + ')';
   }
@@ -368,10 +375,11 @@ function renderStocks(state){
   list.innerHTML = state.stocks.map(s => {
     const qty = myState && myState.holdings[s.id] ? myState.holdings[s.id] : 0;
     const frozen = myState && myState.frozenStock === s.id;
-    return `<div class="stock-tile ${frozen?'frozen':''}" onclick="openModal('${s.id}')">
+    return `<div class="stock-tile ${frozen?'frozen':''} ${qty>0?'owned':''}" onclick="openModal('${s.id}')">
       <div class="st-top">
         <div class="ico-badge">${s.icon}</div>
         <div class="st-name">${s.name}</div>
+        ${qty>0 ? '<span title="تملك هذا السهم" style="margin-right:auto;color:var(--green);font-size:.9em;">●</span>' : ''}
       </div>
       <div class="st-price mono">${fmtMoney(s.price)}</div>
       <div class="st-chg mono ${s.changePct>=0?'up':'down'}">${s.changePct>=0?'+':''}${s.changePct}%</div>
