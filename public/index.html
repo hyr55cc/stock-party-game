@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BIG MARGIN</title>
+<link rel="icon" href="/favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/supabase-config.js"></script>
+<style>
+  :root{
+    --bg:#0b0f14; --surface:#111827; --surface2:#1f2937; --border:#2b3750;
+    --text:#e5e7eb; --text-dim:#9aa1ae; --text-dim2:#5f6773;
+    --green:#00c805; --red:#ff5252;
+    --gold:#d4af37; --gold-bright:#e8c564; --gold-dim:#d4af3722;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden;
+  }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  .display{ font-family:'Playfair Display',serif; }
+  .hidden{ display:none !important; }
+
+  .topnav{ display:flex; justify-content:space-between; align-items:center; padding:22px 40px; }
+  .topnav img{ height:36px; }
+  .auth-area{ display:flex; align-items:center; gap:12px; font-size:.95em; }
+  .auth-area .who{ color:var(--text-dim); }
+  .auth-area .who b{ color:var(--gold-bright); }
+  .ghost-link{ color:var(--text); text-decoration:none; background:var(--surface); border:1px solid var(--border); padding:9px 18px; border-radius:10px; font-weight:600; font-size:.95em; }
+  .ghost-link:hover{ border-color:var(--gold); }
+  .gold-link{ color:#1a1200; text-decoration:none; background:linear-gradient(135deg,var(--gold-bright),var(--gold)); padding:9px 18px; border-radius:10px; font-weight:800; font-size:.95em; box-shadow:0 8px 24px rgba(212,175,55,.25); }
+
+  .hero{ text-align:center; padding:6vh 20px 3vh; }
+  .hero img.logo-mark{ height:110px; margin-bottom:14px; }
+  .hero .tagline{ color:var(--gold); font-size:.9em; letter-spacing:.3em; font-weight:600; margin-bottom:10px; }
+  .hero p{ color:var(--text-dim); font-size:1.15em; max-width:520px; margin:0 auto; }
+
+  .actions{ display:flex; gap:22px; justify-content:center; flex-wrap:wrap; max-width:900px; margin:5vh auto 0; padding:0 20px; }
+  .action-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:22px; padding:34px 30px;
+    width:260px; text-decoration:none; color:var(--text); transition:.18s; position:relative; overflow:hidden;
+  }
+  .action-card:hover{ border-color:var(--gold); transform:translateY(-3px); }
+  .action-card .ic{ font-size:2.4em; margin-bottom:14px; }
+  .action-card h3{ margin:0 0 6px; font-size:1.25em; font-family:'Playfair Display',serif; }
+  .action-card p{ color:var(--text-dim); font-size:.92em; margin:0; line-height:1.6; }
+  .action-card.primary{ border-top:2px solid var(--gold); }
+
+  .features{ display:flex; gap:16px; justify-content:center; flex-wrap:wrap; max-width:960px; margin:7vh auto 0; padding:0 20px 6vh; }
+  .feature{ display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 20px; width:210px; }
+  .feature .fic{ width:40px; height:40px; border-radius:10px; background:var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:1.2em; flex-shrink:0; }
+  .feature .ft{ font-weight:700; font-size:.92em; }
+  .feature .fs{ color:var(--text-dim2); font-size:.78em; margin-top:2px; }
+
+  footer{ text-align:center; color:var(--text-dim2); font-size:.85em; padding:20px; }
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <img src="/logo.png" alt="BIG MARGIN" />
+  <div class="auth-area" id="authArea">
+    <a class="ghost-link" href="/login.html">تسجيل الدخول</a>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="tagline mono">TRADE · COMPETE · DOMINATE</div>
+  <p>لعبة محفظة أسهم جماعية بين الأصدقاء — تنافسوا مباشرة في تداول حي، وابنوا سجل إنجازاتكم عبر الزمن.</p>
+</div>
+
+<div class="actions">
+  <a class="action-card primary" href="/host.html">
+    <div class="ic">🖥️</div>
+    <h3>استضافة لعبة</h3>
+    <p>افتح شاشة العرض الرئيسية (التلفزيون)، شارك الكود، وابدأ الجولة.</p>
+  </a>
+  <a class="action-card" href="/player.html">
+    <div class="ic">📱</div>
+    <h3>انضمام كلاعب</h3>
+    <p>ادخل من جوالك، اكتب الكود، وابدأ التداول مع أصدقائك.</p>
+  </a>
+  <a class="action-card" href="/profile.html">
+    <div class="ic">🏆</div>
+    <h3>حسابي وإنجازاتي</h3>
+    <p>سجل دخولك لحفظ نتائجك وفتح الأوسمة عبر جميع ألعابك.</p>
+  </a>
+</div>
+
+<div class="features">
+  <div class="feature"><div class="fic">⚡</div><div><div class="ft">تداول حي</div><div class="fs">أسعار تتحرك كل 11 ثانية</div></div></div>
+  <div class="feature"><div class="fic">🎯</div><div><div class="ft">3 قوائم أسهم</div><div class="fs">مفضلة، تاسي، ناسداك</div></div></div>
+  <div class="feature"><div class="fic">🏅</div><div><div class="ft">إنجازات دائمة</div><div class="fs">تُحفظ بحسابك للأبد</div></div></div>
+</div>
+
+<footer>BIG MARGIN — لعبة محفظة أسهم جماعية</footer>
+
+<script>
+async function initAuthArea(){
+  const area = document.getElementById('authArea');
+  if (!supabaseClient) return; // لم يتم إعداد Supabase بعد
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session && session.user) {
+    const { data: profile } = await supabaseClient.from('profiles').select('username').eq('id', session.user.id).single();
+    const name = profile && profile.username ? profile.username : session.user.email;
+    area.innerHTML = `
+      <span class="who">مرحباً، <b>${name}</b></span>
+      <a class="ghost-link" href="/profile.html">حسابي</a>
+      <a class="gold-link" href="/player.html">دخول اللعبة</a>
+    `;
+  }
+}
+initAuthArea();
+</script>
+</body>
+</html>

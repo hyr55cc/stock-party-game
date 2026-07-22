@@ -7,14 +7,28 @@ const http = require('http');
 const os = require('os');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ------------------------------------------------------------
+//  Supabase (تسجيل الدخول + حفظ الإنجازات) — اختياري تماماً.
+//  إذا ما ضبطت SUPABASE_URL / SUPABASE_SERVICE_KEY كمتغيرات بيئة،
+//  اللعبة تشتغل عادي بدون حفظ دائم (بدون أخطاء).
+// ------------------------------------------------------------
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
+  : null;
+if (!supabaseAdmin) {
+  console.log('ℹ️  Supabase غير مُفعّل (لا يوجد SUPABASE_URL/SUPABASE_SERVICE_KEY) — اللعبة تعمل بدون حفظ دائم للحسابات.');
+}
+
 app.set('trust proxy', 1);
 app.use(express.static(__dirname + '/public'));
-app.get('/', (req, res) => res.redirect('/host.html'));
 app.get('/healthz', (req, res) => res.send('ok'));
 
 // ------------------------------------------------------------
@@ -142,6 +156,74 @@ const CARDS = [
   { type: 'challenge', text: 'بطاقة تحدي ⚠️: "ضريبة النجاح" -3% من رصيدك النقدي', apply: p => { p.cash = Math.round(p.cash * 0.97); } },
 ];
 
+// ------------------------------------------------------------
+//  الإنجازات (badges) — تُحفظ بحساب اللاعب إذا كان مسجّل دخول
+// ------------------------------------------------------------
+const ACHIEVEMENTS = {
+  first_win:      { icon: '🏆', title: 'الفائز الأول',   desc: 'فُز بجولة كاملة' },
+  top3_finish:    { icon: '🥉', title: 'ثلاثي القمة',     desc: 'اتنهي بالمركز الثالث أو أفضل (3 لاعبين فأكثر)' },
+  high_roller:    { icon: '💰', title: 'ثري السوق',       desc: 'وصلت محفظتك 200,000$ في وقت ما' },
+  active_trader:  { icon: '📊', title: 'متداول نشط',      desc: 'نفّذت 20 صفقة أو أكثر بجولة واحدة' },
+  margin_master:  { icon: '🚀', title: 'سيد التمويل',     desc: 'استخدمت التمويل المضاعف وربحت بالنهاية' },
+  crash_survivor: { icon: '🛡️', title: 'نجا من الانهيار', desc: 'تفاديت الاحتفاظ بالسهم المنهار حتى النهاية' },
+  moon_hunter:    { icon: '🎯', title: 'صائد الفرص',      desc: 'ركبت السهم الصاروخي لنهاية الجولة' },
+  ipo_participant:{ icon: '🎪', title: 'مكتتب المستقبل',  desc: 'شاركت باكتتاب "نصف الثلث"' },
+  diamond_hands:  { icon: '💎', title: 'يد من حديد',      desc: 'ما بعت ولا سهم طول الجولة وربحت' },
+  comeback_king:  { icon: '🔥', title: 'ملك العودة',      desc: 'تعافيت من هبوط حاد وفزت بالجولة' },
+};
+
+function evaluateAchievements(game, player, rank, totalPlayers) {
+  const unlocked = [];
+  if (rank === 0) unlocked.push('first_win');
+  if (rank <= 2 && totalPlayers >= 3) unlocked.push('top3_finish');
+  const peak = player.history && player.history.length ? Math.max(...player.history) : player.cash;
+  const trough = player.history && player.history.length ? Math.min(...player.history) : player.cash;
+  if (peak >= 200000) unlocked.push('high_roller');
+  if ((player.orders || []).length >= 20) unlocked.push('active_trader');
+  if (player.marginUsesLeft < MARGIN_MAX_USES) {
+    const finalValue = portfolioValue(game, player);
+    if (finalValue > START_CASH) unlocked.push('margin_master');
+  }
+  const doomed = game.stocks.find(s => s.isDoomed);
+  if (doomed && (player.holdings[doomed.id] || 0) === 0) unlocked.push('crash_survivor');
+  const moon = game.stocks.find(s => s.isMooning);
+  if (moon && (player.holdings[moon.id] || 0) > 0) unlocked.push('moon_hunter');
+  if ((player.orders || []).some(o => o.stockId === 'ipo')) unlocked.push('ipo_participant');
+  const hasSell = (player.orders || []).some(o => o.action === 'sell');
+  const gainPct = ((portfolioValue(game, player) - START_CASH) / START_CASH) * 100;
+  if (!hasSell && (player.orders || []).length > 0 && gainPct > 0) unlocked.push('diamond_hands');
+  if (trough < START_CASH * 0.85 && rank === 0) unlocked.push('comeback_king');
+  return unlocked;
+}
+
+async function persistPlayerResult(game, player, rank, totalPlayers) {
+  if (!supabaseAdmin || !player.authUserId) return;
+  try {
+    const uid = player.authUserId;
+    const { data: existing } = await supabaseAdmin.from('profiles').select('*').eq('id', uid).single();
+    const finalValue = portfolioValue(game, player);
+    const peak = player.history && player.history.length ? Math.max(...player.history) : finalValue;
+    const updates = {
+      id: uid,
+      username: player.name,
+      games_played: (existing?.games_played || 0) + 1,
+      games_won: (existing?.games_won || 0) + (rank === 0 ? 1 : 0),
+      top3_finishes: (existing?.top3_finishes || 0) + (rank <= 2 && totalPlayers >= 3 ? 1 : 0),
+      total_trades: (existing?.total_trades || 0) + (player.orders || []).length,
+      best_portfolio_value: Math.max(existing?.best_portfolio_value || 0, peak),
+    };
+    await supabaseAdmin.from('profiles').upsert(updates);
+
+    const unlocked = evaluateAchievements(game, player, rank, totalPlayers);
+    if (unlocked.length) {
+      const rows = unlocked.map(key => ({ user_id: uid, achievement_key: key }));
+      await supabaseAdmin.from('player_achievements').upsert(rows, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
+    }
+  } catch (err) {
+    console.error('Supabase persist error:', err.message);
+  }
+}
+
 const SPREAD = 0.006;        // فرق سعر البيع/الشراء الكلي 0.6% (0.3% فوق ± 0.3% تحت منتصف السعر)
 const TICK_MS = 11000;       // تحديث الأسعار كل 11 ثانية
 const START_CASH = 100000;
@@ -249,6 +331,7 @@ function newPlayer(name) {
     history: [START_CASH],
     joinedAt: Date.now(),
     connected: true,
+    authUserId: null,
   };
 }
 
@@ -564,6 +647,19 @@ function endGame(game) {
   const results = leaderboard(game);
   io.to('room:' + game.code).emit('game:ended', { results });
   broadcast(game);
+
+  // حفظ النتائج والإنجازات للاعبين المسجّلين (لا يوقف اللعبة إذا فشل)
+  const totalPlayers = results.length;
+  const playersByName = new Map([...game.players.values()].map(p => [p.name, p]));
+  results.forEach((r, rank) => {
+    const player = playersByName.get(r.name);
+    if (!player || !player.authUserId) return;
+    const unlocked = evaluateAchievements(game, player, rank, totalPlayers);
+    if (unlocked.length) {
+      io.to(player.id).emit('achievements:unlocked', { keys: unlocked, meta: unlocked.map(k => ACHIEVEMENTS[k]) });
+    }
+    persistPlayerResult(game, player, rank, totalPlayers);
+  });
 }
 
 function clearAllTimers(game) {
@@ -621,13 +717,19 @@ io.on('connection', socket => {
     broadcast(game);
   });
 
-  socket.on('player:join', ({ code, name }) => {
+  socket.on('player:join', async ({ code, name, authToken }) => {
     const game = games.get(code);
     if (!game) { socket.emit('errorMsg', 'كود اللعبة غير صحيح'); return; }
     if (game.status !== 'lobby') { socket.emit('errorMsg', 'اللعبة بدأت بالفعل، انتظر الجولة القادمة'); return; }
     if (game.players.size >= 10) { socket.emit('errorMsg', 'اكتمل عدد اللاعبين (10)'); return; }
     const player = newPlayer(name.trim().slice(0, 16) || 'لاعب');
     player.id = socket.id;
+    if (authToken && supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin.auth.getUser(authToken);
+        if (data && data.user) player.authUserId = data.user.id;
+      } catch (e) { /* رمز غير صالح، يكمل كلاعب زائر */ }
+    }
     game.players.set(socket.id, player);
     socket.join('room:' + game.code);
     socket.data.gameCode = code;

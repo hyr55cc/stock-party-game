@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/supabase-config.js"></script>
 <script src="/common.js"></script>
 <style>
   :root{
@@ -170,6 +172,7 @@
     <input id="codeInput" placeholder="كود اللعبة (4 أرقام)" maxlength="4" inputmode="numeric" />
     <button id="joinBtn">انضمام</button>
     <div id="joinErr"></div>
+    <div id="authHint" style="margin-top:16px;font-size:.85em;color:var(--text-dim);"></div>
   </div>
 
   <div id="waiting" class="hidden"><div class="spinner"></div>بانتظار بدء المضيف للعبة...</div>
@@ -255,6 +258,23 @@ const socket = io();
 let myCode = null, myToken = null, myState = null, latestState = null;
 let modalStock = null, modalAction = 'buy', modalQty = 0;
 let attemptingRejoin = false;
+let mySession = null;
+
+async function initAuthHint(){
+  const hint = document.getElementById('authHint');
+  if (!supabaseClient) return;
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  mySession = session;
+  if (session && session.user) {
+    const { data: profile } = await supabaseClient.from('profiles').select('username').eq('id', session.user.id).single();
+    const uname = profile && profile.username ? profile.username : session.user.email;
+    hint.innerHTML = `مسجّل دخولك كـ <b style="color:var(--gold-bright)">${uname}</b> · <a href="/profile.html" style="color:var(--gold);">حسابي</a>`;
+    if (!document.getElementById('nameInput').value) document.getElementById('nameInput').value = uname;
+  } else {
+    hint.innerHTML = `تلعب كزائر — <a href="/login.html" style="color:var(--gold);">سجّل دخولك</a> لحفظ إنجازاتك`;
+  }
+}
+initAuthHint();
 
 const params = new URLSearchParams(location.search);
 if (params.get('code')) document.getElementById('codeInput').value = params.get('code');
@@ -279,7 +299,8 @@ function doJoin(){
   if (!name) { showJoinErr('اكتب اسمك أولاً'); return; }
   if (!/^\d{4}$/.test(code)) { showJoinErr('كود اللعبة يجب أن يكون 4 أرقام'); return; }
   myCode = code;
-  socket.emit('player:join', { code, name });
+  const authToken = mySession && mySession.access_token ? mySession.access_token : null;
+  socket.emit('player:join', { code, name, authToken });
 }
 function showJoinErr(msg){ document.getElementById('joinErr').textContent = msg; }
 
@@ -534,6 +555,12 @@ socket.on('liquidate:done', ({ soldCount, skippedFrozen }) => {
 });
 
 socket.on('game:ended', ({ results }) => renderEnd(results));
+
+socket.on('achievements:unlocked', ({ meta }) => {
+  (meta || []).forEach((a, i) => {
+    setTimeout(() => { toast(`${a.icon} إنجاز جديد: ${a.title}`); playChime('pos'); }, i * 900);
+  });
+});
 </script>
 </body>
 </html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>حسابي — BIG MARGIN</title>
+<link rel="icon" href="/favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/supabase-config.js"></script>
+<style>
+  :root{
+    --bg:#0b0f14; --surface:#111827; --surface2:#1f2937; --border:#2b3750;
+    --text:#e5e7eb; --text-dim:#9aa1ae; --text-dim2:#5f6773;
+    --green:#00c805; --red:#ff5252;
+    --gold:#d4af37; --gold-bright:#e8c564; --gold-dim:#d4af3722;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding-bottom:40px; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  .hidden{ display:none !important; }
+  .wrap{ max-width:760px; margin:0 auto; padding:30px 20px; }
+  .topnav{ display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; }
+  .topnav img{ height:32px; }
+  .ghost-link{ color:var(--text); text-decoration:none; background:var(--surface); border:1px solid var(--border); padding:9px 18px; border-radius:10px; font-weight:600; font-size:.9em; }
+
+  #loggedOut{ text-align:center; padding-top:10vh; }
+  #loggedOut h2{ font-family:'Playfair Display',serif; }
+  #loggedOut a{ color:#1a1200; text-decoration:none; background:linear-gradient(135deg,var(--gold-bright),var(--gold)); padding:12px 30px; border-radius:12px; font-weight:800; display:inline-block; margin-top:16px; }
+
+  .profile-hdr{ display:flex; align-items:center; gap:16px; margin-bottom:26px; }
+  .avatar{ width:64px; height:64px; border-radius:50%; background:var(--gold-dim); border:2px solid var(--gold); display:flex; align-items:center; justify-content:center; font-size:1.6em; font-weight:800; color:var(--gold-bright); font-family:'Playfair Display',serif; }
+  .profile-hdr h2{ font-family:'Playfair Display',serif; margin:0 0 4px; }
+  .profile-hdr .em{ color:var(--text-dim); font-size:.9em; }
+
+  .stats-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:34px; }
+  .stat-card{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px 14px; text-align:center; }
+  .stat-card .v{ font-size:1.5em; font-weight:800; color:var(--gold-bright); }
+  .stat-card .l{ color:var(--text-dim); font-size:.78em; margin-top:4px; }
+
+  h3.section-lbl{ color:var(--text-dim); text-transform:uppercase; font-size:.85em; letter-spacing:.1em; font-weight:600; margin:0 0 14px; }
+  .badges{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+  .badge{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px; text-align:center; }
+  .badge.locked{ opacity:.35; }
+  .badge .bic{ font-size:2em; margin-bottom:8px; }
+  .badge .bt{ font-weight:700; font-size:.9em; }
+  .badge .bd{ color:var(--text-dim2); font-size:.72em; margin-top:4px; line-height:1.4; }
+
+  #logoutBtn{ margin-top:36px; background:none; border:1px solid var(--border); color:var(--text-dim); padding:10px 22px; border-radius:10px; cursor:pointer; font-family:inherit; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topnav">
+    <a href="/"><img src="/logo.png" alt="BIG MARGIN" /></a>
+    <a class="ghost-link" href="/player.html">دخول اللعبة</a>
+  </div>
+
+  <div id="loggedOut" class="hidden">
+    <h2>سجّل دخولك لتشوف حسابك</h2>
+    <a href="/login.html?redirect=/profile.html">تسجيل الدخول / إنشاء حساب</a>
+  </div>
+
+  <div id="loggedIn" class="hidden">
+    <div class="profile-hdr">
+      <div class="avatar" id="avatarInit">?</div>
+      <div>
+        <h2 id="pUsername">—</h2>
+        <div class="em" id="pEmail">—</div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="v mono" id="sGames">0</div><div class="l">جولات لعبتها</div></div>
+      <div class="stat-card"><div class="v mono" id="sWins">0</div><div class="l">مرات الفوز</div></div>
+      <div class="stat-card"><div class="v mono" id="sTop3">0</div><div class="l">ثلاثي القمة</div></div>
+      <div class="stat-card"><div class="v mono" id="sBest">$0</div><div class="l">أعلى محفظة</div></div>
+    </div>
+
+    <h3 class="section-lbl">الأوسمة</h3>
+    <div class="badges" id="badgesGrid"></div>
+
+    <div style="text-align:center;">
+      <button id="logoutBtn">تسجيل الخروج</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ACHIEVEMENTS = {
+  first_win:      { icon: '🏆', title: 'الفائز الأول',   desc: 'فُز بجولة كاملة' },
+  top3_finish:    { icon: '🥉', title: 'ثلاثي القمة',     desc: 'اتنهى بالمركز الثالث أو أفضل' },
+  high_roller:    { icon: '💰', title: 'ثري السوق',       desc: 'وصلت محفظتك 200,000$' },
+  active_trader:  { icon: '📊', title: 'متداول نشط',      desc: '20 صفقة أو أكثر بجولة واحدة' },
+  margin_master:  { icon: '🚀', title: 'سيد التمويل',     desc: 'استخدمت التمويل وربحت' },
+  crash_survivor: { icon: '🛡️', title: 'نجا من الانهيار', desc: 'تفاديت السهم المنهار' },
+  moon_hunter:    { icon: '🎯', title: 'صائد الفرص',      desc: 'ركبت السهم الصاروخي' },
+  ipo_participant:{ icon: '🎪', title: 'مكتتب المستقبل',  desc: 'شاركت باكتتاب نصف الثلث' },
+  diamond_hands:  { icon: '💎', title: 'يد من حديد',      desc: 'ما بعت ولا سهم وربحت' },
+  comeback_king:  { icon: '🔥', title: 'ملك العودة',      desc: 'تعافيت وفزت بالجولة' },
+};
+
+function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+
+async function loadProfile(){
+  if (!supabaseClient) { document.getElementById('loggedOut').classList.remove('hidden'); return; }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session || !session.user) { document.getElementById('loggedOut').classList.remove('hidden'); return; }
+
+  document.getElementById('loggedIn').classList.remove('hidden');
+  const { data: profile } = await supabaseClient.from('profiles').select('*').eq('id', session.user.id).single();
+  const username = (profile && profile.username) || session.user.email;
+  document.getElementById('pUsername').textContent = username;
+  document.getElementById('pEmail').textContent = session.user.email || '';
+  document.getElementById('avatarInit').textContent = username.slice(0,2).toUpperCase();
+  document.getElementById('sGames').textContent = (profile && profile.games_played) || 0;
+  document.getElementById('sWins').textContent = (profile && profile.games_won) || 0;
+  document.getElementById('sTop3').textContent = (profile && profile.top3_finishes) || 0;
+  document.getElementById('sBest').textContent = fmtMoney((profile && profile.best_portfolio_value) || 100000);
+
+  const { data: unlockedRows } = await supabaseClient.from('player_achievements').select('achievement_key').eq('user_id', session.user.id);
+  const unlockedKeys = new Set((unlockedRows || []).map(r => r.achievement_key));
+  const grid = document.getElementById('badgesGrid');
+  grid.innerHTML = Object.entries(ACHIEVEMENTS).map(([key, a]) => {
+    const has = unlockedKeys.has(key);
+    return `<div class="badge ${has ? '' : 'locked'}">
+      <div class="bic">${a.icon}</div>
+      <div class="bt">${a.title}</div>
+      <div class="bd">${a.desc}</div>
+    </div>`;
+  }).join('');
+}
+loadProfile();
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  location.href = '/';
+});
+</script>
+</body>
+</html>
