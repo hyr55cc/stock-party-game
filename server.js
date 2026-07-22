@@ -18,12 +18,18 @@ const io = new Server(server);
 //  إذا ما ضبطت SUPABASE_URL / SUPABASE_SERVICE_KEY كمتغيرات بيئة،
 //  اللعبة تشتغل عادي بدون حفظ دائم (بدون أخطاء).
 // ------------------------------------------------------------
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
-const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
-  : null;
-if (!supabaseAdmin) {
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+const SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY || '').trim();
+let supabaseAdmin = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+  try {
+    supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    console.log('✅ Supabase متصل — الحسابات والإنجازات تُحفظ بشكل دائم.');
+  } catch (err) {
+    console.error('⚠️  فشل الاتصال بـ Supabase (تأكد أن SUPABASE_URL يبدأ بـ https:// وصحيح):', err.message);
+    supabaseAdmin = null;
+  }
+} else {
   console.log('ℹ️  Supabase غير مُفعّل (لا يوجد SUPABASE_URL/SUPABASE_SERVICE_KEY) — اللعبة تعمل بدون حفظ دائم للحسابات.');
 }
 
