@@ -128,6 +128,8 @@
   .board-row:last-child{ border-bottom:none; }
   .board-row.rank1{ background:var(--gold-dim); border-radius:12px; border:1px solid rgba(212,168,83,.25); }
   .board-row .rank{ font-size:1.05em; width:24px; color:var(--text-dim2); font-weight:700; flex-shrink:0; }
+  .crown-badge{ font-size:1.1em; margin-left:4px; animation:crownBob 1.6s ease-in-out infinite; display:inline-block; }
+  @keyframes crownBob{ 0%,100%{ transform:translateY(0) rotate(-4deg); } 50%{ transform:translateY(-3px) rotate(4deg); } }
   .board-row .avatar{ width:36px; height:36px; font-size:.95em; flex-shrink:0; }
   .board-row .info{ flex:1; min-width:0; }
   .board-row .name{ font-size:1.05em; font-weight:600; display:flex; align-items:center; gap:6px; }
@@ -139,6 +141,10 @@
 
   .stocks-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:12px 0; }
   .stock-card{ background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:12px 13px; }
+  .stock-card.halted{ opacity:.55; border-color:#ff3b3b; background:rgba(120,10,10,.12); }
+  .halted-badge{ font-size:.66em; font-weight:800; color:#ff6b6b; background:rgba(255,59,59,.15); padding:2px 7px; border-radius:6px; margin-top:4px; display:inline-block; }
+  #timer.sudden{ color:#ff3b3b; border-color:#ff3b3b; animation:suddenPulse 1s infinite; }
+  @keyframes suddenPulse{ 50%{ box-shadow:0 0 22px rgba(255,59,59,.6); } }
   .stock-card .row1{ display:flex; justify-content:space-between; align-items:flex-start; }
   .stock-card .nm{ font-size:.92em; font-weight:600; display:flex; align-items:center; gap:5px; }
   .stock-card .nm .ico{ font-size:1.1em; }
@@ -163,6 +169,11 @@
   }
   #breakingNews.pos .bn-inner{ background:rgba(0,200,5,.18); border:1.5px solid var(--green); color:#eafff0; }
   #breakingNews.neg .bn-inner{ background:rgba(255,82,82,.18); border:1.5px solid var(--red); color:#fff0f0; }
+  #breakingNews.whale .bn-inner{ background:rgba(84,160,255,.18); border:1.5px solid #54a0ff; color:#eaf3ff; }
+  #breakingNews.squeeze .bn-inner, #breakingNews.pump .bn-inner{ background:rgba(212,168,83,.2); border:1.5px solid var(--gold); color:#fff8e6; }
+  #breakingNews.bankruptcy .bn-inner{ background:rgba(120,10,10,.35); border:1.5px solid #ff3b3b; color:#ffe0e0; }
+  #breakingNews.announcer .bn-inner{ background:rgba(196,42,42,.28); border:1.5px solid var(--brand-red); color:#fff; animation:bnSlide .35s cubic-bezier(.2,.9,.3,1.3), announcerPulse 1.4s ease-in-out infinite; }
+  @keyframes announcerPulse{ 50%{ box-shadow:0 24px 80px rgba(196,42,42,.5); } }
   .bn-tag{ font-size:.5em; text-transform:uppercase; letter-spacing:.1em; font-weight:800; padding:5px 10px; border-radius:8px; background:rgba(255,255,255,.12); flex-shrink:0; }
   .bn-close{ background:rgba(255,255,255,.12); border:none; color:inherit; width:32px; height:32px; border-radius:50%; font-size:.55em; cursor:pointer; flex-shrink:0; margin-right:4px; }
   .bn-close:hover{ background:rgba(255,255,255,.22); }
@@ -197,6 +208,12 @@
   .final-row:last-child{ border-bottom:none; }
   #resetBtn{ margin-top:34px; font-size:1.1em; padding:14px 40px; border-radius:14px; border:1px solid var(--gold); background:transparent; color:var(--gold-bright); cursor:pointer; font-weight:700; }
   #resetBtn:hover{ background:var(--gold-dim); }
+  .stats-hdr{ color:var(--text-dim); text-transform:uppercase; font-size:.85em; letter-spacing:.1em; font-weight:600; margin:36px 0 14px; }
+  .stats-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; max-width:900px; margin:0 auto; }
+  .stat-tile{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px 14px; text-align:center; }
+  .stat-tile .sl{ color:var(--text-dim); font-size:.72em; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+  .stat-tile .sn{ font-weight:700; font-size:1.05em; margin-bottom:2px; }
+  .stat-tile .sv{ color:var(--gold-bright); font-weight:800; font-size:1.15em; }
 </style>
 </head>
 <body>
@@ -278,6 +295,8 @@
     <h1 class="display">🏁 انتهت اللعبة</h1>
     <div class="podium" id="podium"></div>
     <div class="rest-list" id="restList"></div>
+    <div class="stats-hdr hidden" id="statsHdr">إحصائيات الجولة</div>
+    <div class="stats-grid" id="statsGrid"></div>
     <button id="resetBtn">لعبة جديدة</button>
   </div>
 
@@ -346,17 +365,20 @@ function hideBreakingNews(){
   document.getElementById('breakingNews').className = 'hidden';
   clearTimeout(bnTimeout);
 }
-function showBreakingNews(text, type){
+const BN_TAGS = { news: 'خبر عاجل', whale: 'رصد حوت 🐳', squeeze: 'عصر مفاجئ', pump: 'قفزة مريبة', dump: 'انهيار وهمي', bankruptcy: 'إفلاس', announcer: 'المذيع' };
+function showBreakingNews(text, type, kind){
   const el = document.getElementById('breakingNews');
-  document.getElementById('bnIcon').textContent = type === 'pos' ? '📈' : '📉';
+  const icons = { whale:'🐳', squeeze:'💥', pump:'🚀', dump:'📉', bankruptcy:'💀', announcer:'🚨' };
+  document.getElementById('bnIcon').textContent = icons[kind] || (type === 'pos' ? '📈' : '📉');
   document.getElementById('bnText').textContent = text;
-  el.className = type === 'pos' ? 'pos' : 'neg';
+  document.getElementById('bnTag').textContent = BN_TAGS[kind] || 'خبر عاجل';
+  el.className = (type === 'pos' ? 'pos' : 'neg') + ' ' + (kind || 'news');
   clearTimeout(bnTimeout);
   bnTimeout = setTimeout(hideBreakingNews, 7500);
 }
 document.getElementById('bnClose').addEventListener('click', hideBreakingNews);
-socket.on('news:event', ({ text, type }) => {
-  showBreakingNews(text, type);
+socket.on('news:event', ({ text, type, kind }) => {
+  showBreakingNews(text, type, kind);
   playChime(type);
   document.body.classList.remove('flash-pos', 'flash-neg');
   void document.body.offsetWidth;
@@ -380,7 +402,8 @@ socket.on('state:update', state => {
 
     const timerEl = document.getElementById('timer');
     timerEl.textContent = fmtTime(state.timeLeftMs);
-    timerEl.classList.toggle('warn', state.timeLeftMs < 60000);
+    timerEl.classList.toggle('warn', state.timeLeftMs < 60000 && !state.suddenDeath);
+    timerEl.classList.toggle('sudden', !!state.suddenDeath);
 
     const board = document.getElementById('board');
     const medals = ['🥇','🥈','🥉'];
@@ -390,7 +413,7 @@ socket.on('state:update', state => {
         <span class="rank mono">${medals[i] || '#'+(i+1)}</span>
         <span class="avatar" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
         <span class="info">
-          <div class="name">${escapeHtml(p.name)}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</div>
+          <div class="name">${p.hasCrown ? '<span class="crown-badge" title="متصدر منذ دقيقة">👑</span>' : ''}${escapeHtml(p.name)}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</div>
           <div class="gain ${cls} mono">${p.gainPct>0?'+':''}${p.gainPct}%</div>
         </span>
         <span class="value mono">${fmtMoney(p.value)}</span>
@@ -399,12 +422,14 @@ socket.on('state:update', state => {
 
     const sgrid = document.getElementById('stocksGrid');
     sgrid.innerHTML = state.stocks.map(s => `
-      <div class="stock-card">
+      <div class="stock-card ${s.tradingHalted ? 'halted' : ''}">
         <div class="row1">
           <div>
             <div class="nm"><span class="ico">${s.icon}</span>${s.name}</div>
             <div class="price mono">${fmtMoney(s.price)}</div>
-            <div class="bs-row mono"><span class="b">شراء ${fmtMoney(s.buyPrice)}</span><span class="s">بيع ${fmtMoney(s.sellPrice)}</span></div>
+            ${s.tradingHalted
+              ? `<div class="halted-badge">${s.bankrupt ? '💀 مفلسة — توقف التداول' : '🚫 تداول متوقف'}</div>`
+              : `<div class="bs-row mono"><span class="b">شراء ${fmtMoney(s.buyPrice)}</span><span class="s">بيع ${fmtMoney(s.sellPrice)}</span></div>`}
             ${s.dividend ? '<div class="div-badge">💵 يوزع أرباح</div>' : ''}
           </div>
           <div class="chg-pill ${s.changePct>=0?'up':'down'} mono">${s.changePct>=0?'+':''}${s.changePct}%</div>
@@ -425,7 +450,23 @@ socket.on('state:update', state => {
   }
 });
 
-function renderEnd(results){
+const STAT_LABELS = {
+  highestProfit: { icon: '💰', label: 'أعلى أرباح محققة', fmt: v => fmtMoney(v) },
+  biggestLoss: { icon: '📉', label: 'أكبر خسارة بصفقة', fmt: v => fmtMoney(v) },
+  mostTrades: { icon: '📊', label: 'الأكثر تداولاً', fmt: v => v + ' صفقة' },
+  highestWinRate: { icon: '🎯', label: 'أعلى نسبة فوز', fmt: v => v + '%' },
+  fastestTrade: { icon: '⚡', label: 'أسرع صفقة', fmt: v => Math.round(v/1000) + ' ثانية' },
+  highestLeverage: { icon: '🚀', label: 'الأكثر استخداماً للتمويل', fmt: v => v + ' مرات' },
+  biggestSingleWin: { icon: '🏆', label: 'أكبر صفقة رابحة', fmt: v => fmtMoney(v) },
+  mvp: { icon: '👑', label: 'نجم الجولة (MVP)', fmt: v => fmtMoney(v) },
+};
+const STAT_KEY_FIELD = {
+  highestProfit: 'totalRealizedProfit', biggestLoss: 'biggestLoss', mostTrades: 'totalTrades',
+  highestWinRate: 'winRate', fastestTrade: 'fastestTradeMs', highestLeverage: 'leverageUses',
+  biggestSingleWin: 'biggestWin', mvp: 'finalValue',
+};
+
+function renderEnd(results, stats){
   document.getElementById('lobby').classList.add('hidden');
   document.getElementById('game').classList.add('hidden');
   document.getElementById('end').classList.remove('hidden');
@@ -445,9 +486,31 @@ function renderEnd(results){
   const rest = results.slice(3);
   document.getElementById('restList').innerHTML = rest.map((p,i) => `
     <div class="final-row"><span>${i+4}. ${escapeHtml(p.name)}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+
+  const statsHdr = document.getElementById('statsHdr');
+  const statsGrid = document.getElementById('statsGrid');
+  const highlights = stats && stats.highlights;
+  if (highlights) {
+    const tiles = Object.keys(STAT_LABELS).map(key => {
+      const winner = highlights[key];
+      if (!winner) return '';
+      const meta = STAT_LABELS[key];
+      const field = STAT_KEY_FIELD[key];
+      return `<div class="stat-tile">
+        <div class="sl">${meta.icon} ${meta.label}</div>
+        <div class="sn">${escapeHtml(winner.name)}</div>
+        <div class="sv mono">${meta.fmt(winner[field])}</div>
+      </div>`;
+    }).join('');
+    statsGrid.innerHTML = tiles;
+    statsHdr.classList.toggle('hidden', !tiles);
+  } else {
+    statsGrid.innerHTML = '';
+    statsHdr.classList.add('hidden');
+  }
 }
 
-socket.on('game:ended', ({ results }) => renderEnd(results));
+socket.on('game:ended', ({ results, stats }) => renderEnd(results, stats));
 
 socket.on('errorMsg', msg => {
   if (msg.includes('استرجاع')) {

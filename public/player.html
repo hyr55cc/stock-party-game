@@ -90,6 +90,14 @@
   .frozen-badge{ font-size:.7em; color:#ffb020; margin-top:6px; }
   .stock-tile.owned{ border-color:var(--green); background:linear-gradient(180deg, rgba(0,200,5,.09), rgba(0,200,5,.02)); box-shadow:inset 0 0 0 1px rgba(0,200,5,.25); }
   .stock-tile.owned .st-name{ color:var(--green); }
+  .stock-tile.halted{ opacity:.5; border-color:#ff3b3b; background:rgba(120,10,10,.1); }
+  .halted-badge{ font-size:.7em; color:#ff6b6b; margin-top:6px; font-weight:700; }
+  .timer.sudden{ border-color:#ff3b3b !important; }
+  .timer.sudden .tval{ color:#ff3b3b !important; animation:pulse 1s infinite; }
+  @keyframes pulse{ 50%{ opacity:.4; } }
+  .toast.whale{ border-color:#54a0ff; background:rgba(84,160,255,.12); }
+  .toast.announcer{ border-color:var(--brand-red); background:rgba(196,42,42,.16); font-weight:700; }
+  .toast.bankruptcy{ border-color:#ff3b3b; background:rgba(120,10,10,.18); }
 
   .margin-btn.urgent{ border-color:var(--red); color:var(--red); background:rgba(255,82,82,.12); animation:marginPulse 1s infinite; }
   @keyframes marginPulse{ 50%{ opacity:.5; } }
@@ -158,6 +166,11 @@
   .myrank-card .lbl{ color:var(--text-dim); font-size:.9em; margin-top:4px; }
   #fullResults{ max-width:420px; margin:0 auto; text-align:right; }
   .final-row{ display:flex; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); font-size:.98em; }
+  .mystats{ max-width:420px; margin:22px auto 0; display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:right; }
+  .mystats .mtile{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px 14px; }
+  .mystats .mtile .ml{ color:var(--text-dim); font-size:.78em; margin-bottom:4px; }
+  .mystats .mtile .mv{ font-weight:700; font-size:1.05em; }
+  .mystats .mtile .mv.up{ color:var(--green); } .mystats .mtile .mv.down{ color:var(--red); }
 </style>
 </head>
 <body>
@@ -207,6 +220,7 @@
       <div class="big mono" id="myRankNum">#-</div>
       <div class="lbl" id="myRankVal">$0</div>
     </div>
+    <div class="mystats hidden" id="myStats"></div>
     <h4 class="section-lbl">النتائج الكاملة</h4>
     <div id="fullResults"></div>
   </div>
@@ -334,7 +348,8 @@ socket.on('state:update', state => {
     document.getElementById('end').classList.add('hidden');
     const tb = document.getElementById('timerBox');
     document.getElementById('myTimer').textContent = fmtTime(state.timeLeftMs);
-    tb.classList.toggle('warn', state.timeLeftMs < 60000);
+    tb.classList.toggle('warn', state.timeLeftMs < 60000 && !state.suddenDeath);
+    tb.classList.toggle('sudden', !!state.suddenDeath);
     renderStocks(state);
     if (!document.getElementById('modalBg').classList.contains('hidden') && modalStock) {
       const fresh = state.stocks.find(s => s.id === modalStock.id);
@@ -348,7 +363,7 @@ socket.on('state:update', state => {
   }
 });
 
-function renderEnd(results){
+function renderEnd(results, stats){
   document.getElementById('waiting').classList.add('hidden');
   document.getElementById('join').classList.add('hidden');
   document.getElementById('game').classList.add('hidden');
@@ -360,6 +375,23 @@ function renderEnd(results){
   const medals = ['🥇','🥈','🥉'];
   document.getElementById('fullResults').innerHTML = results.map((p,i) => `
     <div class="final-row"><span>${medals[i] || (i+1)+'.'} ${escapeHtml(p.name)}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+
+  const statsEl = document.getElementById('myStats');
+  const mine = stats && stats.perPlayer && myState ? stats.perPlayer.find(p => p.name === myState.name) : null;
+  if (mine) {
+    statsEl.classList.remove('hidden');
+    statsEl.innerHTML = `
+      <div class="mtile"><div class="ml">📊 عدد الصفقات</div><div class="mv mono">${mine.totalTrades}</div></div>
+      <div class="mtile"><div class="ml">🎯 نسبة الفوز بالصفقات</div><div class="mv mono">${mine.winRate}%</div></div>
+      <div class="mtile"><div class="ml">💰 أرباح محققة</div><div class="mv mono ${mine.totalRealizedProfit>=0?'up':'down'}">${fmtMoney(mine.totalRealizedProfit)}</div></div>
+      <div class="mtile"><div class="ml">🏆 أكبر صفقة رابحة</div><div class="mv mono up">${fmtMoney(mine.biggestWin)}</div></div>
+      <div class="mtile"><div class="ml">📉 أكبر صفقة خاسرة</div><div class="mv mono down">${fmtMoney(mine.biggestLoss)}</div></div>
+      <div class="mtile"><div class="ml">🚀 مرات استخدام التمويل</div><div class="mv mono">${mine.leverageUses}</div></div>
+    `;
+  } else {
+    statsEl.classList.add('hidden');
+    statsEl.innerHTML = '';
+  }
 }
 
 socket.on('player:update', p => {
@@ -404,7 +436,7 @@ function renderStocks(state){
   list.innerHTML = state.stocks.map(s => {
     const qty = myState && myState.holdings[s.id] ? myState.holdings[s.id] : 0;
     const frozen = myState && myState.frozenStock === s.id;
-    return `<div class="stock-tile ${frozen?'frozen':''} ${qty>0?'owned':''}" onclick="openModal('${s.id}')">
+    return `<div class="stock-tile ${frozen?'frozen':''} ${qty>0?'owned':''} ${s.tradingHalted?'halted':''}" onclick="openModal('${s.id}')">
       <div class="st-top">
         <div class="ico-badge">${s.icon}</div>
         <div class="st-name">${s.name}</div>
@@ -413,7 +445,8 @@ function renderStocks(state){
       <div class="st-price mono">${fmtMoney(s.price)}</div>
       <div class="st-chg mono ${s.changePct>=0?'up':'down'}">${s.changePct>=0?'+':''}${s.changePct}%</div>
       <div class="spark"><canvas id="rowspark-${s.id}"></canvas></div>
-      ${qty>0 ? `<div class="hold mono">${qty} سهم · م ${fmtMoney((myState.avgCost&&myState.avgCost[s.id])||0)}</div>` : (frozen ? `<div class="frozen-badge">مجمد</div>` : (s.dividend ? `<div class="hold">يوزع أرباح 💵</div>` : ''))}
+      ${s.tradingHalted ? `<div class="halted-badge">${s.bankrupt ? '💀 مفلسة' : '🚫 متوقف'}</div>` :
+        (qty>0 ? `<div class="hold mono">${qty} سهم · م ${fmtMoney((myState.avgCost&&myState.avgCost[s.id])||0)}</div>` : (frozen ? `<div class="frozen-badge">مجمد</div>` : (s.dividend ? `<div class="hold">يوزع أرباح 💵</div>` : '')))}
     </div>`;
   }).join('');
   state.stocks.forEach(s => drawCandles(document.getElementById('rowspark-'+s.id), s.candles, 16));
@@ -491,6 +524,7 @@ function updateTotals(){
 document.getElementById('confirmBtn').addEventListener('click', () => {
   if (modalQty <= 0) { toast('اختر عدد أسهم أولاً'); return; }
   if (modalAction === 'buy') {
+    if (modalStock.tradingHalted) { toast('🚫 التداول متوقف على هذا السهم (إفلاس)'); return; }
     const cost = modalQty * execPrice();
     if (myState && cost > myState.cash + 0.01) { toast('رصيدك النقدي لا يكفي لهذه الكمية'); return; }
   } else {
@@ -524,13 +558,14 @@ function renderOrders(){
     </div>`).join('') : '<div class="empty-hint">ما فيه صفقات بعد</div>';
 }
 
-function toast(msg){
+const TOAST_ICONS = { whale: '🐳 ', squeeze: '💥 ', pump: '🚀 ', dump: '📉 ', bankruptcy: '💀 ', announcer: '🚨 ' };
+function toast(msg, kind){
   const area = document.getElementById('toastArea');
   const el = document.createElement('div');
-  el.className = 'toast';
+  el.className = 'toast' + (kind && kind !== 'news' ? ' ' + kind : '');
   const msgSpan = document.createElement('span');
   msgSpan.className = 'toast-msg';
-  msgSpan.textContent = msg;
+  msgSpan.textContent = (TOAST_ICONS[kind] || '') + msg;
   const closeBtn = document.createElement('button');
   closeBtn.className = 'toast-close';
   closeBtn.textContent = '✕';
@@ -541,7 +576,7 @@ function toast(msg){
   setTimeout(() => el.remove(), 7000);
 }
 socket.on('card:drawn', ({ text, type }) => { toast(text); playChime(type === 'opportunity' ? 'pos' : 'neg'); });
-socket.on('news:event', ({ text, type }) => { toast(text); playChime(type); });
+socket.on('news:event', ({ text, type, kind }) => { toast(text, kind); playChime(type); });
 
 document.getElementById('liquidateBtn').addEventListener('click', () => {
   if (!myState) return;
@@ -554,7 +589,7 @@ socket.on('liquidate:done', ({ soldCount, skippedFrozen }) => {
   toast(`✅ تم تسييل ${soldCount} سهم${skippedFrozen ? ' (باستثناء سهم مجمد)' : ''}`);
 });
 
-socket.on('game:ended', ({ results }) => renderEnd(results));
+socket.on('game:ended', ({ results, stats }) => renderEnd(results, stats));
 
 socket.on('achievements:unlocked', ({ meta }) => {
   (meta || []).forEach((a, i) => {
