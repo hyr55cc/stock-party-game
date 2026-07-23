@@ -336,6 +336,66 @@ function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function isSuddenDeath(game) { return game.status === 'running' && (game.endTime - Date.now()) <= 60000; }
 function spreadFor(game) { return isSuddenDeath(game) ? SPREAD * 2 : SPREAD; }
 
+// ============================================================
+//  محرك السوق الواقعي (Realistic Market Engine)
+//  السعر يتحرك بفعل: الاتجاه + العودة للقيمة العادلة + الزخم +
+//  مزاج السوق العام + ضغط التداول (حسب السيولة) + الأخبار + الضوضاء.
+//  صفقة اللاعب الواحدة أثرها بسيط؛ الأسهم منخفضة السيولة فقط تتحرك بوضوح.
+// ============================================================
+const FLOW_DIVISOR = 1500000; // كل ما زاد = أثر أقل لصفقات اللاعبين على السعر
+const FLOW_MAX_IMPACT = 0.04; // أقصى أثر لضغط التداول على تحرّك التِّك الواحد (4%)
+const rnd = (a, b) => a + Math.random() * (b - a);
+const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+// توزيع طبيعي تقريبي (Box–Muller) مقصوص لتفادي القفزات المجنونة
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  const n = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return clamp(n, -2.6, 2.6);
+}
+
+const RISK_LABELS = ['منخفض', 'متوسط', 'عالٍ', 'مرتفع جداً'];
+const SPEED_LABELS = ['بطيء', 'متوسط', 'سريع'];
+
+// يولّد شخصية عشوائية جديدة لكل سهم في بداية كل جولة (نفس السهم يتصرف مختلف كل مرة)
+function generateStockProfile(baseVol) {
+  const volatility = clamp((baseVol || 0.03) * rnd(0.6, 1.6) + rnd(0, 0.015), 0.008, 0.06);
+  const liquidity = randInt(2, 10);
+  const trendStrength = rnd(0.0006, 0.0045);
+  const newsSensitivity = rnd(0.6, 1.9);
+  const recoverySpeed = rnd(0.02, 0.13);
+  const extremeProb = rnd(0, 0.09);
+  const sentimentBeta = rnd(0.2, 1.3);
+  const avgVolume = randInt(1, 5); // مضاعف حجم التداول المتوقع (للعرض/البوتات لاحقاً)
+  // تقييم المخاطرة يُشتق من التقلب واحتمال الأحداث المتطرفة
+  const riskScore = volatility / 0.06 * 0.6 + extremeProb / 0.09 * 0.4;
+  const riskRating = RISK_LABELS[Math.min(3, Math.floor(riskScore * 4))];
+  const tradingSpeed = SPEED_LABELS[randInt(0, 2)];
+  return { volatility, liquidity, avgVolume, trendStrength, newsSensitivity, recoverySpeed, extremeProb, sentimentBeta, riskRating, tradingSpeed };
+}
+
+// يعيّن "نظام سوق" (regime) جديد للسهم: صاعد/هابط/تجميع/اختراق/تصحيح/انعكاس
+function assignRegime(stock) {
+  if (stock.forcedTrend) return; // أسهم الانهيار/الصعود الصاروخي لها اتجاه ثابت
+  const ts = stock.trendStrength;
+  const r = Math.random();
+  let regime, trend, volMult, dur;
+  if (r < 0.26)      { regime = 'trending_up';   trend =  ts * rnd(0.6, 1.6);  volMult = 1.0; dur = randInt(4, 9); }
+  else if (r < 0.50) { regime = 'trending_down'; trend = -ts * rnd(0.6, 1.6);  volMult = 1.0; dur = randInt(4, 9); }
+  else if (r < 0.70) { regime = 'consolidation'; trend =  0;                   volMult = 0.5; dur = randInt(3, 7); }
+  else if (r < 0.82) { regime = 'breakout';      trend = (Math.random() < 0.5 ? 1 : -1) * ts * rnd(1.6, 2.4); volMult = 1.5; dur = randInt(2, 4); }
+  else if (r < 0.92) { regime = 'pullback';      trend = -Math.sign(stock.momentum || 1) * ts * rnd(0.5, 1.0); volMult = 0.9; dur = randInt(2, 4); }
+  else               { regime = 'reversal';      trend = -Math.sign(stock.trend || 1) * ts * rnd(1.0, 1.6);   volMult = 1.2; dur = randInt(3, 6); }
+  stock.regime = regime; stock.trend = trend; stock.regimeVolMult = volMult; stock.regimeTicksLeft = dur;
+}
+
+// يسجّل ضغط التداول (تدفّق نقدي صافٍ) الذي يقرأه المحرك لاحقاً بدل تحريك السعر فوراً
+function recordFlow(stock, orderValue, direction) {
+  stock.flow = (stock.flow || 0) + direction * orderValue;
+}
+
 // ------------------------------------------------------------
 //  إدارة الألعاب (غرف)
 // ------------------------------------------------------------
@@ -357,21 +417,42 @@ function makeCandle(open, close) {
 }
 
 function freshStocks(listKey) {
-  return stockDefsFor(listKey).map(s => ({
-    ...s,
-    ...metaFor(s.id),
-    startPrice: s.price,
-    prevPrice: s.price,
-    changePct: 0,
-    minPrice: round2(s.price * 0.05),
-    maxPrice: round2(s.price * 15),
-    drift: 0,
-    isDoomed: false,
-    isMooning: false,
-    bankrupt: false,
-    tradingHalted: false,
-    candles: [{ o: s.price, h: s.price, l: s.price, c: s.price }],
-  }));
+  return stockDefsFor(listKey).map(s => {
+    const meta = metaFor(s.id);                 // القطاع ثابت مع هوية الشركة
+    const profile = generateStockProfile(s.volatility); // بقية الصفات عشوائية كل جولة
+    const personality = profile.volatility > 0.04 ? 'High-Risk'
+      : profile.trendStrength > 0.0032 ? 'Growth'
+      : profile.volatility < 0.018 ? 'Stable' : 'Growth';
+    const stock = {
+      id: s.id, name: s.name, icon: s.icon, dividend: s.dividend,
+      sector: meta.sector,
+      personality,
+      ...profile,
+      price: s.price,
+      startPrice: s.price,
+      prevPrice: s.price,
+      changePct: 0,
+      fairValue: s.price,
+      trend: 0,
+      momentum: 0,
+      flow: 0,
+      newsDrift: 0,
+      newsDriftTicks: 0,
+      regime: 'consolidation',
+      regimeVolMult: 1,
+      regimeTicksLeft: 0,
+      forcedTrend: false,
+      minPrice: round2(s.price * 0.05),
+      maxPrice: round2(s.price * 15),
+      isDoomed: false,
+      isMooning: false,
+      bankrupt: false,
+      tradingHalted: false,
+      candles: [{ o: s.price, h: s.price, l: s.price, c: s.price }],
+    };
+    assignRegime(stock); // اختيار نظام سوق ابتدائي
+    return stock;
+  });
 }
 
 // يختار عشوائياً سهماً "منهاراً" وآخر "صاروخياً" لكل لعبة، ويحسب انحدار السعر
@@ -385,14 +466,18 @@ function pickWildStocks(game, durationMs) {
 
   const ticks = Math.max(1, Math.floor(durationMs / TICK_MS));
   doomed.isDoomed = true;
+  doomed.forcedTrend = true;
   // 40% فرصة أن الشركة تنهار للإفلاس الكامل، غير ذلك تهبط بشدة لكن تبقى حية
   const goesBankrupt = Math.random() < 0.4;
   doomed.minPrice = round2(doomed.startPrice * (goesBankrupt ? 0.001 : 0.02));
-  doomed.drift = Math.log(goesBankrupt ? 0.008 : 0.05) / ticks;
+  doomed.trend = Math.log(goesBankrupt ? 0.008 : 0.05) / ticks;
+  doomed.regime = 'trending_down';
 
   moon.isMooning = true;
+  moon.forcedTrend = true;
   moon.maxPrice = round2(moon.startPrice * 30);
-  moon.drift = Math.log(12) / ticks; // يرتفع نحو ~12 ضعف سعره الأصلي
+  moon.trend = Math.log(12) / ticks; // يرتفع نحو ~12 ضعف سعره الأصلي
+  moon.regime = 'trending_up';
 
   addNews(game, '📉 تحذير من مصادر السوق: أحد الأسهم مقبل على انهيار حاد هذه الجولة!', 'neg', null);
   addNews(game, '📈 شائعات عن سهم واحد سيحقق أرقاماً خيالية هذه الجولة!', 'pos', null);
@@ -416,6 +501,7 @@ function createGame(hostSocketId) {
     timers: {},
     crownLeaderId: null,
     crownSince: 0,
+    sentiment: 0,          // مزاج السوق العام (-1 هبوطي .. +1 صعودي)
   };
   games.set(code, game);
   return game;
@@ -470,27 +556,8 @@ function applySell(player, stock, qty, price) {
   });
 }
 
-const WHALE_THRESHOLD = 30000; // صفقة بهذا الحجم أو أكبر تُعتبر "حوت" وتُعلن للجميع
-
-// أثر السوق: صفقة كبيرة تحرّك السعر فعلياً حسب سيولة السهم (سيولة أقل = أثر أكبر لكل دولار)
-function applyMarketImpact(stock, orderValue, direction) {
-  const liquidity = stock.liquidity || 5;
-  const impactPct = clamp(orderValue / (liquidity * 60000), 0, 0.12);
-  if (impactPct <= 0.0005) return;
-  const open = stock.price;
-  stock.price = clamp(stock.price * (1 + direction * impactPct), stock.minPrice, stock.maxPrice);
-  // نمدد آخر شمعة بدل إضافة شمعة جديدة لكل صفقة (حتى ما تمتلئ الشموع بسرعة)
-  const last = stock.candles[stock.candles.length - 1];
-  if (last) {
-    last.c = round2(stock.price);
-    last.h = round2(Math.max(last.h, stock.price, open));
-    last.l = round2(Math.min(last.l, stock.price, open));
-  }
-}
-
-function announceWhale(game, player, stock, action, amount) {
-  addNews(game, `🐳 حوت بالسوق! ${player.name} ${action === 'buy' ? 'اشترى' : 'باع'} ${stock.icon} ${stock.name} بصفقة ضخمة (${fmtDollar(amount)})`, action === 'buy' ? 'pos' : 'neg', stock.id, 'whale');
-}
+// ملاحظة: تأثير صفقات اللاعبين على السعر يُدار الآن عبر recordFlow() + محرك السوق،
+// فصفقة اللاعب الواحدة أثرها بسيط ولا تحرّك السوق فوراً. لا توجد إعلانات عن صفقات اللاعبين.
 
 function activateMargin(game, player) {
   if (player.marginActive) return { ok: false, msg: 'لديك تمويل مضاعف نشط بالفعل' };
@@ -678,17 +745,58 @@ function addNews(game, text, type, stockId, kind) {
 // ------------------------------------------------------------
 //  حلقات اللعبة
 // ------------------------------------------------------------
+// المحرك الرئيسي: يحسب سعر كل سهم من مكوّنات واقعية بدل المشي العشوائي البسيط
 function tickPrices(game) {
   const suddenDeath = isSuddenDeath(game);
-  const volMult = suddenDeath ? 1.8 : 1;
+  const volMult = suddenDeath ? 1.6 : 1;
+
+  // 1) تطوّر مزاج السوق العام ببطء (يؤثر على كل الأسهم حسب حساسية كل سهم)
+  game.sentiment = clamp((game.sentiment || 0) * 0.92 + randn() * 0.05, -1, 1);
+
   for (const s of game.stocks) {
     if (s.bankrupt) continue; // توقف التداول تماماً، السعر ثابت عند الصفر
     const open = s.price;
-    const randomWalk = (Math.random() - 0.5) * 2 * s.volatility * volMult + (s.drift || 0);
-    const close = clamp(open * (1 + randomWalk), s.minPrice, s.maxPrice);
+
+    // 2) إدارة نظام السوق (regime): يتغيّر كل عدة تِكّات فيولّد اتجاهات وتصحيحات واختراقات
+    if (!s.forcedTrend) {
+      if ((s.regimeTicksLeft = (s.regimeTicksLeft || 0) - 1) <= 0) assignRegime(s);
+    }
+
+    // 3) مكوّنات العائد لهذا التِّك (كنِسَب مئوية)
+    let ret = 0;
+    ret += s.trend;                                   // الاتجاه/الانحدار الحالي
+    ret += 0.15 * (s.momentum || 0);                  // استمرار الزخم
+    if (!s.forcedTrend) {                              // عودة نحو القيمة العادلة (تُنتج تصحيحات صحية)
+      const gap = (s.fairValue - open) / open;
+      ret += s.recoverySpeed * gap;
+    }
+    ret += 0.0045 * s.sentimentBeta * game.sentiment; // تأثّر بمزاج السوق العام
+    // ضغط التداول (حجم/سيولة): الأسهم منخفضة السيولة فقط تتحرك بوضوح من الصفقات
+    const flowImpact = clamp((s.flow || 0) / (s.liquidity * FLOW_DIVISOR), -FLOW_MAX_IMPACT, FLOW_MAX_IMPACT);
+    ret += flowImpact;
+    s.flow = (s.flow || 0) * 0.4;                     // يتلاشى ضغط التداول تدريجياً
+    // أثر الأخبار المستمر لعدة دقائق بعد الحدث المهم
+    if (s.newsDriftTicks > 0) { ret += s.newsDrift; s.newsDriftTicks--; }
+    // الضوضاء الطبيعية (حسب تقلب السهم ونظام السوق الحالي)
+    ret += randn() * s.volatility * volMult * (s.regimeVolMult || 1);
+    // حدث متطرف نادر (قفزة/هبوط مفاجئ) حسب شخصية السهم
+    if (Math.random() < s.extremeProb * 0.12) ret += (Math.random() < 0.5 ? 1 : -1) * s.volatility * rnd(3, 6);
+
+    // قصّ العائد لكل تِّك لتفادي القفزات غير الواقعية
+    const cap = s.forcedTrend ? 0.5 : 0.16;
+    ret = clamp(ret, -cap, cap);
+
+    const close = clamp(open * (1 + ret), s.minPrice, s.maxPrice);
     s.prevPrice = open;
     s.price = close;
     s.changePct = Math.round(((close - open) / open) * 10000) / 100;
+
+    // تحديث الزخم (متوسط متحرك أُسّي للعائد) والقيمة العادلة تتبع الاتجاه ببطء
+    s.momentum = 0.7 * (s.momentum || 0) + 0.3 * ((close - open) / open);
+    if (!s.forcedTrend) {
+      s.fairValue = clamp(s.fairValue * (1 + s.trend * 0.6) + (close - s.fairValue) * 0.06, s.minPrice, s.maxPrice);
+    }
+
     s.candles.push(makeCandle(open, close));
     if (s.candles.length > 60) s.candles.shift();
 
@@ -704,28 +812,86 @@ function tickPrices(game) {
   }
 }
 
+// ============================================================
+//  نظام الأخبار المالية الواقعية
+//  كل خبر له: شدّة (تُحدَّد من مدى التأثير) + مدة استمرار (تِكّات يظل السوق يتفاعل فيها) + نطاق.
+//  min/max = التأثير الفوري، dur = عدد التِّكّات التي يستمر فيها الأثر بعد الخبر.
+// ============================================================
+const COMPANY_NEWS = [
+  { type: 'pos', text: 'أرباح فصلية تفوق توقعات المحللين بقوة', min: 0.05, max: 0.12, dur: 6 },
+  { type: 'pos', text: 'تطلق منتجاً جديداً يبهر الأسواق', min: 0.08, max: 0.18, dur: 8 },
+  { type: 'pos', text: 'تعلن عن استثمار ضخم في التوسّع', min: 0.06, max: 0.13, dur: 6 },
+  { type: 'pos', text: 'عرض استحواذ كبير يرفع السهم', min: 0.10, max: 0.22, dur: 5 },
+  { type: 'pos', text: 'ترقية تصنيف ائتماني من وكالة عالمية', min: 0.03, max: 0.07, dur: 5 },
+  { type: 'pos', text: 'توقّع عقداً حكومياً ضخماً', min: 0.05, max: 0.12, dur: 6 },
+  { type: 'neg', text: 'أرباح فصلية مخيّبة للآمال', min: 0.05, max: 0.12, dur: 6 },
+  { type: 'neg', text: 'استقالة مفاجئة للرئيس التنفيذي', min: 0.05, max: 0.11, dur: 6 },
+  { type: 'neg', text: 'حريق كبير في أحد مصانعها', min: 0.08, max: 0.16, dur: 5 },
+  { type: 'neg', text: 'تتعرّض لهجوم سيبراني واسع', min: 0.07, max: 0.15, dur: 6 },
+  { type: 'neg', text: 'شائعات عن أزمة سيولة وإفلاس محتمل', min: 0.10, max: 0.20, dur: 7 },
+  { type: 'neg', text: 'اضطراب في سلسلة التوريد يضغط على الإنتاج', min: 0.05, max: 0.11, dur: 8 },
+  { type: 'neg', text: 'تحقيق تنظيمي مفاجئ يثير قلق المستثمرين', min: 0.06, max: 0.13, dur: 7 },
+  { type: 'neg', text: 'خفض تصنيفها الائتماني', min: 0.04, max: 0.09, dur: 6 },
+];
+const SECTOR_NEWS = [
+  { type: 'neg', text: '📋 لوائح حكومية جديدة تضغط على قطاع {sector}', min: 0.04, max: 0.09, dur: 8 },
+  { type: 'pos', text: '🚀 طفرة استثمارية كبيرة في قطاع {sector}', min: 0.05, max: 0.11, dur: 8 },
+  { type: 'pos', text: '📈 طلب قوي يرفع شركات قطاع {sector}', min: 0.04, max: 0.09, dur: 7 },
+  { type: 'neg', text: '📉 مخاوف من تباطؤ يضرب قطاع {sector}', min: 0.04, max: 0.09, dur: 7 },
+];
+const MARKET_NEWS = [
+  { type: 'pos', text: '🏦 البنك المركزي يخفض الفائدة.. موجة تفاؤل تجتاح الأسواق', min: 0.02, max: 0.05, dur: 10 },
+  { type: 'neg', text: '🏦 البنك المركزي يرفع الفائدة.. ضغط على كل الأسواق', min: 0.02, max: 0.05, dur: 10 },
+  { type: 'neg', text: '📊 بيانات تضخم أعلى من المتوقع تقلق المستثمرين', min: 0.02, max: 0.05, dur: 8 },
+  { type: 'pos', text: '🌍 تحسّن مؤشرات الاقتصاد العالمي.. ارتفاع عام بالأسواق', min: 0.03, max: 0.06, dur: 8 },
+  { type: 'neg', text: '🌍 أزمة اقتصادية عالمية مفاجئة.. هبوط حاد بالأسواق', min: 0.04, max: 0.08, dur: 10 },
+  { type: 'pos', text: '🤖 طفرة في صناعة الذكاء الاصطناعي ترفع معنويات السوق', min: 0.02, max: 0.05, dur: 8 },
+];
+
+// يطبّق أثر خبر على سهم: قفزة فورية + أثر مستمر يتلاشى على مدى عدة تِكّات
+function applyNewsImpact(game, stock, sign, pct, durationTicks) {
+  if (stock.bankrupt) return;
+  pct *= (stock.newsSensitivity || 1);
+  const open = stock.price;
+  stock.price = clamp(stock.price * (1 + sign * pct), stock.minPrice, stock.maxPrice);
+  stock.candles.push(makeCandle(open, stock.price));
+  if (stock.candles.length > 60) stock.candles.shift();
+  // أثر مستمر: يُوزَّع ~55% من قوة الصدمة على مدى مدة الخبر (السوق يظل يتفاعل)
+  const dur = Math.max(1, durationTicks);
+  stock.newsDrift = sign * (pct * 0.55) / dur;
+  stock.newsDriftTicks = dur;
+  // القيمة العادلة تنزاح باتجاه الخبر ليستمر الاتجاه بشكل طبيعي
+  stock.fairValue = clamp(stock.fairValue * (1 + sign * pct * 0.5), stock.minPrice, stock.maxPrice);
+}
+
 function triggerNews(game) {
-  const pool = game.newsPool && game.newsPool.length ? game.newsPool : NEWS_POOL;
-  const item = pool[Math.floor(Math.random() * pool.length)];
-  const pct = item.min + Math.random() * (item.max - item.min);
-  const sign = item.type === 'pos' ? 1 : -1;
-  if (item.scope === 'global') {
-    for (const s of game.stocks) {
-      const open = s.price;
-      s.price = clamp(s.price * (1 + sign * pct), s.minPrice, s.maxPrice);
-      s.candles.push(makeCandle(open, s.price));
-      if (s.candles.length > 60) s.candles.shift();
-    }
-    addNews(game, item.text, item.type, null);
+  const live = game.stocks.filter(s => !s.bankrupt);
+  if (!live.length) return;
+  const roll = Math.random();
+
+  if (roll < 0.13) {
+    // خبر يمسّ السوق كامل
+    const ev = pick(MARKET_NEWS);
+    const sign = ev.type === 'pos' ? 1 : -1;
+    for (const s of live) applyNewsImpact(game, s, sign, rnd(ev.min, ev.max), ev.dur);
+    game.sentiment = clamp((game.sentiment || 0) + sign * 0.35, -1, 1);
+    addNews(game, ev.text, ev.type, null, 'news');
+  } else if (roll < 0.35) {
+    // خبر يمسّ قطاعاً كاملاً
+    const sectors = [...new Set(live.map(s => s.sector))];
+    const sector = pick(sectors);
+    const affected = live.filter(s => s.sector === sector);
+    const ev = pick(SECTOR_NEWS);
+    const sign = ev.type === 'pos' ? 1 : -1;
+    for (const s of affected) applyNewsImpact(game, s, sign, rnd(ev.min, ev.max), ev.dur);
+    addNews(game, ev.text.replace('{sector}', sector), ev.type, null, 'news');
   } else {
-    const s = game.stocks.find(x => x.id === item.scope);
-    if (s) {
-      const open = s.price;
-      s.price = clamp(s.price * (1 + sign * pct), s.minPrice, s.maxPrice);
-      s.candles.push(makeCandle(open, s.price));
-      if (s.candles.length > 60) s.candles.shift();
-      addNews(game, `${s.icon} ${s.name}: ${item.text}`, item.type, s.id);
-    }
+    // خبر يخصّ شركة واحدة
+    const s = pick(live);
+    const ev = pick(COMPANY_NEWS);
+    const sign = ev.type === 'pos' ? 1 : -1;
+    applyNewsImpact(game, s, sign, rnd(ev.min, ev.max), ev.dur);
+    addNews(game, `${s.icon} ${s.name}: ${ev.text}`, ev.type, s.id, 'news');
   }
 }
 
@@ -834,17 +1000,21 @@ function scheduleIPO(game, durationMs) {
   game.timers.ipo = setTimeout(() => {
     if (game.status !== 'running') return;
     const price = round2(15 + Math.random() * 15);
+    const profile = generateStockProfile(0.09);
+    profile.liquidity = randInt(1, 3); // اكتتاب جديد = سيولة ضعيفة (يتحرك بسرعة)
     const ipoStock = {
       id: 'ipo', name: 'شركة نصف الثلث', icon: '🎪',
-      sector: 'اكتتاب جديد', personality: 'Meme', liquidity: 2,
+      sector: 'اكتتاب جديد', personality: 'Meme', dividend: false,
+      ...profile,
       price, startPrice: price, prevPrice: price, changePct: 0,
-      volatility: 0.09, dividend: false,
+      fairValue: price, trend: 0, momentum: 0, flow: 0, newsDrift: 0, newsDriftTicks: 0,
+      regime: 'breakout', regimeVolMult: 1.4, regimeTicksLeft: 0, forcedTrend: false,
       minPrice: round2(price * 0.05), maxPrice: round2(price * 15),
-      drift: 0, isDoomed: false, isMooning: false, bankrupt: false, tradingHalted: false,
+      isDoomed: false, isMooning: false, bankrupt: false, tradingHalted: false,
       candles: [{ o: price, h: price, l: price, c: price }],
     };
+    assignRegime(ipoStock);
     game.stocks.push(ipoStock);
-    addGenericNewsForStock(game.newsPool, ipoStock);
     addNews(game, `🎉 اكتتاب مفاجئ! سهم "نصف الثلث" 🎪 يبدأ التداول الآن بسعر ${fmtDollar(price)}`, 'pos', ipoStock.id);
     broadcast(game);
   }, delay);
@@ -995,6 +1165,7 @@ io.on('connection', socket => {
     game.newsPool = [];
     game.crownLeaderId = null;
     game.crownSince = 0;
+    game.sentiment = 0;
     for (const p of game.players.values()) {
       p.cash = START_CASH; p.holdings = {}; p.costBasis = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0; p.gotLuckyCard = false;
@@ -1071,17 +1242,15 @@ io.on('connection', socket => {
       const cost = qty * buyPrice;
       if (cost > player.cash + 0.01) { socket.emit('errorMsg', 'رصيدك النقدي لا يكفي لهذه الكمية'); return; }
       applyBuy(player, stock, qty, buyPrice);
-      applyMarketImpact(stock, cost, 1);
+      recordFlow(stock, cost, 1); // ضغط شراء يُقرأ من المحرك (أثر بسيط)
       socket.emit('trade:confirmed', { action: 'buy', qty, price: round2(buyPrice), total: round2(cost), stockName: stock.name, icon: stock.icon });
-      if (cost >= WHALE_THRESHOLD) announceWhale(game, player, stock, 'buy', cost);
     } else if (action === 'sell') {
       const owned = player.holdings[stockId] || 0;
       if (qty > owned) { socket.emit('errorMsg', 'لا تملك هذه الكمية لبيعها'); return; }
       const proceeds = qty * sellPrice;
       applySell(player, stock, qty, sellPrice);
-      if (!stock.bankrupt) applyMarketImpact(stock, proceeds, -1);
+      if (!stock.bankrupt) recordFlow(stock, proceeds, -1); // ضغط بيع
       socket.emit('trade:confirmed', { action: 'sell', qty, price: round2(sellPrice), total: round2(proceeds), stockName: stock.name, icon: stock.icon });
-      if (proceeds >= WHALE_THRESHOLD) announceWhale(game, player, stock, 'sell', proceeds);
     } else {
       return;
     }
