@@ -576,7 +576,7 @@ function activateMargin(game, player) {
     if (!player.marginActive) return;
     io.to(player.id).emit('news:event', { text: '⚠️ تنبيه: تمويلك المضاعف سينتهي خلال 30 ثانية! سيتم تسييل محفظتك تلقائياً وسداد القرض', type: 'neg' });
   }, warnDelay);
-  addNews(game, `🚀 ${player.name} فعّل تمويل مضاعف! رأس ماله تضاعف مؤقتاً لمدة 5 دقائق`, 'pos', null);
+  if (!player.isBot) addNews(game, `🚀 ${player.name} فعّل تمويل مضاعف! رأس ماله تضاعف مؤقتاً لمدة 5 دقائق`, 'pos', null);
   return { ok: true };
 }
 
@@ -597,7 +597,7 @@ function closeMargin(game, player) {
   clearTimeout(game.timers['margin_' + player.token + '_warn']);
   delete game.timers['margin_' + player.token];
   delete game.timers['margin_' + player.token + '_warn'];
-  addNews(game, `⏰ انتهت مهلة تمويل ${player.name} — تصفية تلقائية لمحفظته وسداد التمويل`, 'neg', null);
+  if (!player.isBot) addNews(game, `⏰ انتهت مهلة تمويل ${player.name} — تصفية تلقائية لمحفظته وسداد التمويل`, 'neg', null);
   broadcast(game);
 }
 
@@ -644,6 +644,8 @@ function leaderboard(game) {
         connected: p.connected,
         marginActive: p.marginActive,
         hasCrown: false,
+        isBot: !!p.isBot,
+        botLabel: p.isBot ? (p.botParams && p.botParams.label) : null,
       };
     })
     .sort((a, b) => b.value - a.value);
@@ -952,7 +954,7 @@ function payDividends(game) {
 }
 
 function drawCard(game) {
-  const players = [...game.players.values()];
+  const players = [...game.players.values()].filter(p => !p.isBot); // البطاقات للاعبين الحقيقيين فقط
   if (!players.length) return;
   const player = players[Math.floor(Math.random() * players.length)];
   const card = CARDS[Math.floor(Math.random() * CARDS.length)];
@@ -960,6 +962,153 @@ function drawCard(game) {
   if (card.type === 'opportunity') player.gotLuckyCard = true;
   io.to(player.id).emit('card:drawn', { text: card.text, type: card.type });
   addNews(game, `🎴 ${player.name} سحب ${card.text}`, card.type === 'opportunity' ? 'pos' : 'neg', null);
+}
+
+// ============================================================
+//  لاعبو الكمبيوتر (AI Traders / Bots)
+//  منافسون افتراضيون يتداولون بناءً على معلومات عامة فقط (الأسعار والشموع والأخبار عبر حركة السعر).
+//  لكل بوت أسلوب تداول + مستوى صعوبة يحدّدان سلوكه. لا يغشّون ولا يرون معلومات خفية.
+// ============================================================
+const BOT_NAMES = ['خالد', 'نورة', 'سعود', 'ريم', 'فهد', 'لمى', 'ماجد', 'جود', 'تركي', 'دانة', 'وليد', 'شهد', 'ناصر', 'هند'];
+const BOT_STYLES = {
+  scalper:  { label: 'سكالبر ⚡',       cadence: 6000,  sizeFrac: 0.15, target: 0.02, stop: 0.015, newsAggr: 0.6, levProb: 0.04, momW: 1.0, valW: 0.0 },
+  day:      { label: 'مضارب يومي 📊',   cadence: 14000, sizeFrac: 0.25, target: 0.05, stop: 0.035, newsAggr: 0.8, levProb: 0.10, momW: 0.8, valW: 0.15 },
+  swing:    { label: 'متداول سوينغ 🌊', cadence: 30000, sizeFrac: 0.35, target: 0.12, stop: 0.07,  newsAggr: 0.5, levProb: 0.12, momW: 0.6, valW: 0.35 },
+  momentum: { label: 'متداول زخم 🚀',   cadence: 12000, sizeFrac: 0.30, target: 0.08, stop: 0.05,  newsAggr: 1.0, levProb: 0.20, momW: 1.2, valW: 0.0 },
+  value:    { label: 'مستثمر قيمة 💎',  cadence: 40000, sizeFrac: 0.40, target: 0.15, stop: 0.10,  newsAggr: 0.3, levProb: 0.05, momW: 0.0, valW: 1.1 },
+  highrisk: { label: 'مخاطر عالية 🎰',  cadence: 11000, sizeFrac: 0.50, target: 0.10, stop: 0.08,  newsAggr: 1.0, levProb: 0.40, momW: 0.9, valW: 0.0 },
+};
+const BOT_DIFFICULTY = {
+  beginner: { label: 'مبتدئ',  skill: 0.15, noise: 0.060, discipline: 0.20 },
+  easy:     { label: 'سهل',    skill: 0.32, noise: 0.045, discipline: 0.38 },
+  normal:   { label: 'عادي',   skill: 0.50, noise: 0.030, discipline: 0.55 },
+  hard:     { label: 'صعب',    skill: 0.68, noise: 0.020, discipline: 0.72 },
+  expert:   { label: 'محترف',  skill: 0.84, noise: 0.012, discipline: 0.85 },
+  pro:      { label: 'خبير',   skill: 0.95, noise: 0.006, discipline: 0.95 },
+};
+const BOT_TICK_MS = 4000;
+
+function newBot(name, styleKey, diffKey) {
+  const b = newPlayer(name);
+  b.id = 'bot_' + crypto.randomUUID().slice(0, 8);
+  b.isBot = true;
+  b.botStyle = styleKey;
+  b.botParams = BOT_STYLES[styleKey];
+  b.botDiffKey = diffKey;
+  b.diff = BOT_DIFFICULTY[diffKey] || BOT_DIFFICULTY.normal;
+  b.connected = true;
+  b.nextActAt = 0;
+  return b;
+}
+
+function spawnBots(game, count, difficulty) {
+  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+  const styleKeys = Object.keys(BOT_STYLES);
+  const diffKeys = Object.keys(BOT_DIFFICULTY);
+  const n = clamp(Math.floor(count || 0), 0, 6);
+  for (let i = 0; i < n; i++) {
+    const style = styleKeys[i % styleKeys.length]; // توزيع الأساليب لتنوّع السوق
+    const diffKey = (difficulty === 'mixed' || !BOT_DIFFICULTY[difficulty]) ? pick(diffKeys) : difficulty;
+    const bot = newBot(names[i % names.length], style, diffKey);
+    game.players.set(bot.id, bot);
+  }
+}
+
+function removeBots(game) {
+  for (const [id, p] of game.players) if (p.isBot) game.players.delete(id);
+}
+
+// تقييم البوت لسهم بناءً على معلومات عامة فقط: زخم متوسط + تغيّر آخر تِّك + رخص السعر مقابل الافتتاح
+function botScore(bot, s) {
+  const p = bot.botParams, d = bot.diff;
+  const cs = s.candles;
+  const win = Math.min(6, cs.length);
+  const past = cs[cs.length - win].c || s.price;
+  const mom = (s.price - past) / past;
+  const shortMom = (s.changePct || 0) / 100;
+  const valueSig = -(s.price - s.startPrice) / s.startPrice; // أرخص من الافتتاح = فرصة شراء لمستثمر القيمة
+  let sig = p.momW * (mom * 0.6 + shortMom * 0.4) + p.valW * valueSig;
+  sig = sig * (0.4 + d.skill) + randn() * d.noise; // المهارة تشحذ الإشارة، الصعوبة الأقل تضيف عشوائية
+  return sig;
+}
+
+function botTrade(game, bot, stock, action, qty) {
+  qty = Math.floor(qty);
+  if (qty <= 0) return;
+  const sp = spreadFor(game);
+  if (action === 'buy') {
+    if (stock.tradingHalted) return;
+    const price = stock.price * (1 + sp / 2);
+    let affordable = Math.floor(bot.cash / price);
+    qty = Math.min(qty, affordable);
+    if (qty <= 0) return;
+    const cost = qty * price;
+    applyBuy(bot, stock, qty, price);
+    recordFlow(stock, cost, 1);
+  } else {
+    const owned = bot.holdings[stock.id] || 0;
+    qty = Math.min(qty, owned);
+    if (qty <= 0) return;
+    const price = stock.price * (1 - sp / 2);
+    applySell(bot, stock, qty, price);
+    if (!stock.bankrupt) recordFlow(stock, qty * price, -1);
+  }
+}
+
+function botAct(game, bot) {
+  const live = game.stocks.filter(s => !s.bankrupt && !s.tradingHalted);
+  if (!live.length) return;
+  const p = bot.botParams, d = bot.diff;
+  const value = portfolioValue(game, bot);
+
+  // 1) إدارة المراكز المفتوحة: جني الأرباح أو وقف الخسارة (الانضباط أعلى = وقف خسائر أفضل)
+  for (const s of live) {
+    const qty = bot.holdings[s.id] || 0;
+    if (qty <= 0) continue;
+    const avg = (bot.costBasis[s.id] || 0) / qty;
+    if (avg <= 0) continue;
+    const pl = (s.price - avg) / avg;
+    const target = p.target * (0.7 + d.discipline * 0.6);
+    const stop = p.stop * (0.6 + (1 - d.discipline) * 1.2); // انضباط أقل = وقف أوسع (يتمسّك بالخاسر)
+    if (pl >= target) botTrade(game, bot, s, 'sell', qty);
+    else if (pl <= -stop && Math.random() < d.discipline) botTrade(game, bot, s, 'sell', qty);
+  }
+
+  // 2) فرصة فتح/زيادة مركز على أفضل سهم حسب إشارته
+  let best = null, bestScore = -1e9;
+  for (const s of live) {
+    const sc = botScore(bot, s);
+    if (sc > bestScore) { bestScore = sc; best = s; }
+  }
+  const buyThresh = 0.015 * (1.6 - d.skill); // الأمهر يتحرّك على إشارات أصغر
+  if (best && bestScore > buyThresh) {
+    const already = (bot.holdings[best.id] || 0) * best.price;
+    const maxPos = value * p.sizeFrac * (0.6 + d.discipline * 0.6);
+    const budget = Math.min(bot.cash, maxPos - already);
+    if (budget > best.price) {
+      // استخدام التمويل بذكاء عند القناعة العالية (حسب الأسلوب والمهارة)
+      if (!bot.marginActive && bot.marginUsesLeft > 0 && bestScore > buyThresh * 2.2 && Math.random() < p.levProb * d.skill) {
+        activateMargin(game, bot);
+      }
+      const spend = budget * (0.5 + Math.random() * 0.5);
+      const qty = Math.floor(spend / (best.price * (1 + spreadFor(game) / 2)));
+      if (qty > 0) botTrade(game, bot, best, 'buy', qty);
+    }
+  }
+}
+
+function botTick(game) {
+  if (game.status !== 'running') return;
+  const now = Date.now();
+  let acted = false;
+  for (const bot of game.players.values()) {
+    if (!bot.isBot) continue;
+    if (now < (bot.nextActAt || 0)) continue;
+    // الموعد القادم للتصرّف حسب إيقاع الأسلوب (± عشوائية بشرية)
+    bot.nextActAt = now + bot.botParams.cadence * (0.6 + Math.random() * 0.9);
+    try { botAct(game, bot); acted = true; } catch (e) { /* تجاهل خطأ بوت فردي */ }
+  }
+  if (acted) broadcast(game);
 }
 
 function startGame(game, durationMs, listKey) {
@@ -977,6 +1126,7 @@ function startGame(game, durationMs, listKey) {
   scheduleNews(game);
   game.timers.dividend = setInterval(() => { payDividends(game); broadcast(game); }, 90000);
   game.timers.card = setInterval(() => { drawCard(game); }, 50000);
+  game.timers.bots = setInterval(() => botTick(game), BOT_TICK_MS);
   game.timers.broadcast = setInterval(() => broadcast(game), 1500);
   game.timers.end = setTimeout(() => endGame(game), durationMs);
 
@@ -1142,10 +1292,14 @@ io.on('connection', socket => {
     broadcast(game);
   });
 
-  socket.on('host:start', ({ code, durationMs, listKey }) => {
+  socket.on('host:start', ({ code, durationMs, listKey, bots }) => {
     const game = games.get(code);
     if (!game || game.status !== 'lobby') return;
-    if (game.players.size < 1) { socket.emit('errorMsg', 'أضف لاعباً واحداً على الأقل قبل البدء'); return; }
+    const realPlayers = [...game.players.values()].filter(p => !p.isBot).length;
+    const botCount = bots && bots.count ? clamp(Math.floor(bots.count), 0, 6) : 0;
+    if (realPlayers + botCount < 1) { socket.emit('errorMsg', 'أضف لاعباً أو بوتاً واحداً على الأقل قبل البدء'); return; }
+    removeBots(game); // نظّف أي بوتات قديمة قبل إضافة الجدد
+    if (botCount > 0) spawnBots(game, botCount, (bots && bots.difficulty) || 'normal');
     startGame(game, durationMs || 30 * 60000, listKey);
   });
 
@@ -1166,6 +1320,7 @@ io.on('connection', socket => {
     game.crownLeaderId = null;
     game.crownSince = 0;
     game.sentiment = 0;
+    removeBots(game); // البوتات تُعاد إضافتها حسب إعداد المضيف عند البدء التالي
     for (const p of game.players.values()) {
       p.cash = START_CASH; p.holdings = {}; p.costBasis = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0; p.gotLuckyCard = false;

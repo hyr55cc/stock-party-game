@@ -73,6 +73,15 @@
     background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
   }
   .duration-picker button.active{ background:var(--gold); color:#1a1200; border-color:var(--gold); }
+
+  .bot-picker{ margin:12px 0 4px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .bot-picker button{
+    font-size:1em; padding:10px 20px; border-radius:11px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); cursor:pointer; transition:.15s; font-weight:600;
+  }
+  .bot-picker button.active{ background:var(--gold); color:#1a1200; border-color:var(--gold); }
+  .bot-diff button{ font-size:.92em; padding:8px 14px; }
+  .bot-badge{ font-size:.82em; margin-left:5px; }
   .custom-duration{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:16px; color:var(--text-dim); font-size:.95em; }
   .custom-duration input{
     width:90px; padding:9px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface);
@@ -264,6 +273,26 @@
       <input type="number" id="customMinutes" min="1" max="240" placeholder="مثلاً 20" />
       <span>دقيقة</span>
     </div>
+
+    <h3 class="section-lbl">🤖 لاعبو الكمبيوتر (منافسون)</h3>
+    <div class="bot-picker" id="botCountPicker">
+      <button data-bots="0" class="active">بدون</button>
+      <button data-bots="1">1</button>
+      <button data-bots="2">2</button>
+      <button data-bots="3">3</button>
+      <button data-bots="4">4</button>
+      <button data-bots="5">5</button>
+    </div>
+    <div class="bot-picker bot-diff hidden" id="botDiffPicker">
+      <button data-diff="beginner">مبتدئ</button>
+      <button data-diff="easy">سهل</button>
+      <button data-diff="normal" class="active">عادي</button>
+      <button data-diff="hard">صعب</button>
+      <button data-diff="expert">محترف</button>
+      <button data-diff="pro">خبير</button>
+      <button data-diff="mixed">منوّع 🎲</button>
+    </div>
+
     <br/>
     <button id="startBtn" disabled>ابدأ اللعبة</button>
   </div>
@@ -355,8 +384,31 @@ document.querySelectorAll('.list-picker button').forEach(btn => {
   });
 });
 
+let selectedBotCount = 0;
+let selectedBotDifficulty = 'normal';
+document.querySelectorAll('#botCountPicker button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#botCountPicker button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedBotCount = parseInt(btn.dataset.bots, 10);
+    document.getElementById('botDiffPicker').classList.toggle('hidden', selectedBotCount === 0);
+  });
+});
+document.querySelectorAll('#botDiffPicker button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#botDiffPicker button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedBotDifficulty = btn.dataset.diff;
+  });
+});
+
 document.getElementById('startBtn').addEventListener('click', () => {
-  socket.emit('host:start', { code: currentCode, durationMs: selectedMinutes * 60000, listKey: selectedList });
+  socket.emit('host:start', {
+    code: currentCode,
+    durationMs: selectedMinutes * 60000,
+    listKey: selectedList,
+    bots: { count: selectedBotCount, difficulty: selectedBotDifficulty },
+  });
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
@@ -424,7 +476,7 @@ socket.on('state:update', state => {
         <span class="rank mono">${medals[i] || '#'+(i+1)}</span>
         <span class="avatar" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
         <span class="info">
-          <div class="name">${p.hasCrown ? '<span class="crown-badge" title="متصدر منذ دقيقة">👑</span>' : ''}${escapeHtml(p.name)}${!p.connected ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</div>
+          <div class="name">${p.hasCrown ? '<span class="crown-badge" title="متصدر منذ دقيقة">👑</span>' : ''}${escapeHtml(p.name)}${p.isBot ? `<span class="bot-badge" title="لاعب كمبيوتر — ${escapeHtml(p.botLabel||'')}">🤖</span>` : ''}${!p.connected && !p.isBot ? '<span class="offline-dot" title="غير متصل"></span>' : ''}${p.marginActive ? '<span class="margin-badge">🚀</span>' : ''}</div>
           <div class="gain ${cls} mono">${p.gainPct>0?'+':''}${p.gainPct}%</div>
         </span>
         <span class="value mono">${fmtMoney(p.value)}</span>
@@ -489,14 +541,14 @@ function renderEnd(results, stats){
     const p = top3[i]; const rankClass = ['p1','p2','p3'][i];
     return `<div class="podium-slot ${rankClass}">
       <span class="avatar" style="background:${colorFor(p.name)}">${escapeHtml(initials(p.name))}</span>
-      <div class="pname">${escapeHtml(p.name)}</div>
+      <div class="pname">${escapeHtml(p.name)}${p.isBot ? ' 🤖' : ''}</div>
       <div class="pval mono">${fmtMoney(p.value)}</div>
       <div class="podium-bar mono">${['🥇','🥈','🥉'][i]}</div>
     </div>`;
   }).join('');
   const rest = results.slice(3);
   document.getElementById('restList').innerHTML = rest.map((p,i) => `
-    <div class="final-row"><span>${i+4}. ${escapeHtml(p.name)}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
+    <div class="final-row"><span>${i+4}. ${escapeHtml(p.name)}${p.isBot ? ' 🤖' : ''}</span><span class="mono">${fmtMoney(p.value)}</span></div>`).join('');
 
   const statsHdr = document.getElementById('statsHdr');
   const statsGrid = document.getElementById('statsGrid');
