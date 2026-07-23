@@ -30,7 +30,13 @@
   #loggedOut a{ color:#1a1200; text-decoration:none; background:linear-gradient(135deg,var(--gold-bright),var(--gold)); padding:12px 30px; border-radius:12px; font-weight:800; display:inline-block; margin-top:16px; }
 
   .profile-hdr{ display:flex; align-items:center; gap:16px; margin-bottom:26px; }
-  .avatar{ width:64px; height:64px; border-radius:50%; background:var(--gold-dim); border:2px solid var(--gold); display:flex; align-items:center; justify-content:center; font-size:1.6em; font-weight:800; color:var(--gold-bright); font-family:'Playfair Display',serif; }
+  .avatar{ width:64px; height:64px; border-radius:50%; background:var(--gold-dim); border:2px solid var(--gold); display:flex; align-items:center; justify-content:center; font-size:1.6em; font-weight:800; color:var(--gold-bright); font-family:'Playfair Display',serif; overflow:hidden; }
+  .avatar img{ width:100%; height:100%; object-fit:cover; }
+  .avatar-wrap{ position:relative; cursor:pointer; flex-shrink:0; }
+  .avatar-wrap .cam{ position:absolute; bottom:-2px; left:-2px; width:24px; height:24px; border-radius:50%; background:var(--gold); color:#1a1200; display:flex; align-items:center; justify-content:center; font-size:.8em; border:2px solid var(--bg); }
+  .avatar-wrap:hover .avatar{ filter:brightness(1.1); }
+  #avatarMsg{ font-size:.8em; margin-top:6px; min-height:1em; }
+  #avatarMsg.ok{ color:var(--gold-bright); } #avatarMsg.err{ color:var(--red); }
   .profile-hdr h2{ font-family:'Playfair Display',serif; margin:0 0 4px; }
   .profile-hdr .em{ color:var(--text-dim); font-size:.9em; }
 
@@ -65,10 +71,15 @@
 
   <div id="loggedIn" class="hidden">
     <div class="profile-hdr">
-      <div class="avatar" id="avatarInit">?</div>
+      <div class="avatar-wrap" id="avatarWrap" title="اضغط لتغيير الصورة">
+        <div class="avatar" id="avatarInit">?</div>
+        <div class="cam">📷</div>
+      </div>
+      <input type="file" id="avatarInput" accept="image/*" style="display:none;" />
       <div>
         <h2 id="pUsername">—</h2>
         <div class="em" id="pEmail">—</div>
+        <div id="avatarMsg"></div>
       </div>
     </div>
 
@@ -114,17 +125,29 @@ const ACHIEVEMENTS = {
 
 function fmtMoney(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
 
+let currentUserId = null;
+
+function setAvatar(url, username){
+  const el = document.getElementById('avatarInit');
+  if (url) {
+    el.innerHTML = `<img src="${url}" alt="avatar" />`;
+  } else {
+    el.textContent = (username || '?').slice(0,2).toUpperCase();
+  }
+}
+
 async function loadProfile(){
   if (!supabaseClient) { document.getElementById('loggedOut').classList.remove('hidden'); return; }
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session || !session.user) { document.getElementById('loggedOut').classList.remove('hidden'); return; }
+  currentUserId = session.user.id;
 
   document.getElementById('loggedIn').classList.remove('hidden');
   const { data: profile } = await supabaseClient.from('profiles').select('*').eq('id', session.user.id).single();
   const username = (profile && profile.username) || session.user.email;
   document.getElementById('pUsername').textContent = username;
   document.getElementById('pEmail').textContent = session.user.email || '';
-  document.getElementById('avatarInit').textContent = username.slice(0,2).toUpperCase();
+  setAvatar(profile && profile.avatar_url, username);
   document.getElementById('sGames').textContent = (profile && profile.games_played) || 0;
   document.getElementById('sWins').textContent = (profile && profile.games_won) || 0;
   document.getElementById('sTop3').textContent = (profile && profile.top3_finishes) || 0;
@@ -143,6 +166,59 @@ async function loadProfile(){
   }).join('');
 }
 loadProfile();
+
+// ===== رفع صورة الملف الشخصي (يُصغّرها للمتصفح ثم يحفظها بقاعدة البيانات) =====
+const avatarWrap = document.getElementById('avatarWrap');
+const avatarInput = document.getElementById('avatarInput');
+const avatarMsg = document.getElementById('avatarMsg');
+
+avatarWrap.addEventListener('click', () => avatarInput.click());
+
+avatarInput.addEventListener('change', async () => {
+  const file = avatarInput.files && avatarInput.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showAvatarMsg('اختر ملف صورة صالح', true); return; }
+  showAvatarMsg('جاري المعالجة...', false);
+  try {
+    const dataUrl = await resizeImage(file, 160);
+    if (dataUrl.length > 200000) { showAvatarMsg('الصورة كبيرة جداً، جرّب صورة أبسط', true); return; }
+    const { error } = await supabaseClient.from('profiles').update({ avatar_url: dataUrl }).eq('id', currentUserId);
+    if (error) throw error;
+    setAvatar(dataUrl);
+    showAvatarMsg('✅ تم تحديث الصورة', false);
+  } catch (e) {
+    showAvatarMsg(e.message || 'تعذّر حفظ الصورة', true);
+  }
+  avatarInput.value = '';
+});
+
+function showAvatarMsg(text, isErr){
+  avatarMsg.textContent = text;
+  avatarMsg.className = isErr ? 'err' : 'ok';
+}
+
+// يصغّر الصورة إلى مربع size×size عبر canvas ويرجّع dataURL بصيغة JPEG مضغوطة
+function resizeImage(file, size){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2, sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => reject(new Error('تعذّر قراءة الصورة'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('تعذّر قراءة الملف'));
+    reader.readAsDataURL(file);
+  });
+}
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();

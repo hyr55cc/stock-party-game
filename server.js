@@ -979,6 +979,12 @@ io.on('connection', socket => {
     startGame(game, durationMs || 30 * 60000, listKey);
   });
 
+  socket.on('host:end', ({ code }) => {
+    const game = games.get(code);
+    if (!game || game.status !== 'running') return;
+    endGame(game);
+  });
+
   socket.on('host:reset', ({ code }) => {
     const game = games.get(code);
     if (!game) return;

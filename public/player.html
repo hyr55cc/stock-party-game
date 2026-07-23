@@ -282,10 +282,19 @@ async function initAuthHint(){
   if (session && session.user) {
     const { data: profile } = await supabaseClient.from('profiles').select('username').eq('id', session.user.id).single();
     const uname = profile && profile.username ? profile.username : session.user.email;
-    hint.innerHTML = `مسجّل دخولك كـ <b style="color:var(--gold-bright)">${uname}</b> · <a href="/profile.html" style="color:var(--gold);">حسابي</a>`;
+    hint.innerHTML = `مسجّل دخولك كـ <b style="color:var(--gold-bright)">${uname}</b><br>
+      <a href="/profile.html" style="color:var(--gold);">👤 حسابي وإنجازاتي</a>
+      · <a href="#" id="logoutLink" style="color:var(--red);">تسجيل خروج</a>`;
     if (!document.getElementById('nameInput').value) document.getElementById('nameInput').value = uname;
+    const ll = document.getElementById('logoutLink');
+    if (ll) ll.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await supabaseClient.auth.signOut();
+      mySession = null;
+      location.reload();
+    });
   } else {
-    hint.innerHTML = `تلعب كزائر — <a href="/login.html" style="color:var(--gold);">سجّل دخولك</a> لحفظ إنجازاتك`;
+    hint.innerHTML = `تلعب كزائر — <a href="/login.html?redirect=/player.html${location.search ? encodeURIComponent(location.search) : ''}" style="color:var(--gold);font-weight:700;">🔑 تسجيل الدخول / إنشاء حساب</a> لحفظ إنجازاتك`;
   }
 }
 initAuthHint();
@@ -427,9 +436,9 @@ document.getElementById('marginBtn').addEventListener('click', () => {
   if (!myState || myState.marginActive || myState.marginUsesLeft <= 0) return;
   socket.emit('player:margin', { code: myCode });
 });
-socket.on('trade:confirmed', ({ action, qty, price, total, stockName, icon }) => {
-  toast(`✅ ${action==='buy'?'اشتريت':'بعت'} ${qty} ${icon} ${stockName} بسعر ${fmtMoney(price)}/سهم (الإجمالي ${fmtMoney(total)})`);
-});
+// لا نعرض إشعار تأكيد لكل صفقة شراء/بيع — التأكيد واضح من تحديث المحفظة وإغلاق النافذة.
+// (سجل كل الصفقات متاح بزر "📜 الأوامر")
+socket.on('trade:confirmed', () => { playChime('pos'); });
 
 function renderStocks(state){
   const list = document.getElementById('stocksList');
@@ -576,7 +585,13 @@ function toast(msg, kind){
   setTimeout(() => el.remove(), 7000);
 }
 socket.on('card:drawn', ({ text, type }) => { toast(text); playChime(type === 'opportunity' ? 'pos' : 'neg'); });
-socket.on('news:event', ({ text, type, kind }) => { toast(text, kind); playChime(type); });
+// شاشة اللاعب تعرض أخبار السوق فقط (الأحداث المؤثرة على الأسعار). تنبيهات الحيتان والمذيع للمضيف فقط.
+const PLAYER_NEWS_KINDS = ['news', 'squeeze', 'pump', 'dump', 'bankruptcy'];
+socket.on('news:event', ({ text, type, kind }) => {
+  if (!PLAYER_NEWS_KINDS.includes(kind || 'news')) return; // تجاهل تنبيهات الحوت/المذيع على شاشة اللاعب
+  toast(text, kind);
+  playChime(type);
+});
 
 document.getElementById('liquidateBtn').addEventListener('click', () => {
   if (!myState) return;

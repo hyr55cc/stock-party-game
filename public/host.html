@@ -145,6 +145,8 @@
   .halted-badge{ font-size:.66em; font-weight:800; color:#ff6b6b; background:rgba(255,59,59,.15); padding:2px 7px; border-radius:6px; margin-top:4px; display:inline-block; }
   #timer.sudden{ color:#ff3b3b; border-color:#ff3b3b; animation:suddenPulse 1s infinite; }
   @keyframes suddenPulse{ 50%{ box-shadow:0 0 22px rgba(255,59,59,.6); } }
+  #endGameBtn{ font-size:.95em; padding:10px 18px; border-radius:12px; border:1px solid var(--red); background:rgba(255,82,82,.1); color:var(--red); font-weight:700; cursor:pointer; font-family:inherit; }
+  #endGameBtn:hover{ background:rgba(255,82,82,.2); }
   .stock-card .row1{ display:flex; justify-content:space-between; align-items:flex-start; }
   .stock-card .nm{ font-size:.92em; font-weight:600; display:flex; align-items:center; gap:5px; }
   .stock-card .nm .ico{ font-size:1.1em; }
@@ -270,7 +272,10 @@
   <div id="game" class="hidden">
     <div class="topbar">
       <div class="brand"><img src="/logo.png" alt="BIG MARGIN" style="height:32px;" /><span class="code-pill mono" id="codeSmall"></span></div>
-      <div id="timer" class="mono">30:00</div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button id="endGameBtn" title="إنهاء اللعبة الآن">⏹ إنهاء اللعبة</button>
+        <div id="timer" class="mono">30:00</div>
+      </div>
     </div>
     <div class="price-ticker"><div class="ptrack" id="priceTicker"></div></div>
     <div class="main-grid">
@@ -358,6 +363,12 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   socket.emit('host:reset', { code: currentCode });
   document.getElementById('end').classList.add('hidden');
   document.getElementById('lobby').classList.remove('hidden');
+});
+
+document.getElementById('endGameBtn').addEventListener('click', () => {
+  if (confirm('إنهاء اللعبة الآن وعرض النتائج؟')) {
+    socket.emit('host:end', { code: currentCode });
+  }
 });
 
 let bnTimeout;

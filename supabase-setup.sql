@@ -12,8 +12,12 @@ create table if not exists profiles (
   games_won int default 0,
   top3_finishes int default 0,
   best_portfolio_value numeric default 100000,
-  total_trades int default 0
+  total_trades int default 0,
+  avatar_url text
 );
+
+-- إذا كان الجدول موجوداً مسبقاً بدون عمود الصورة، شغّل هذا السطر لإضافته:
+alter table profiles add column if not exists avatar_url text;
 
 -- جدول الإنجازات المفتوحة لكل لاعب
 create table if not exists player_achievements (
