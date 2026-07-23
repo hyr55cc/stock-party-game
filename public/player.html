@@ -98,6 +98,7 @@
   .toast.whale{ border-color:#54a0ff; background:rgba(84,160,255,.12); }
   .toast.announcer{ border-color:var(--brand-red); background:rgba(196,42,42,.16); font-weight:700; }
   .toast.bankruptcy{ border-color:#ff3b3b; background:rgba(120,10,10,.18); }
+  .toast.insider{ border-color:var(--gold); background:rgba(212,168,83,.16); color:var(--gold-bright); font-weight:700; }
 
   .margin-btn.urgent{ border-color:var(--red); color:var(--red); background:rgba(255,82,82,.12); animation:marginPulse 1s infinite; }
   @keyframes marginPulse{ 50%{ opacity:.5; } }
@@ -106,6 +107,16 @@
     width:100%; padding:12px; border-radius:12px; border:1px solid var(--red); background:rgba(255,82,82,.08);
     color:var(--red); font-weight:700; font-size:.92em; font-family:inherit; margin-bottom:14px;
   }
+  .power-btn{
+    width:100%; padding:13px; border-radius:12px; border:1px solid var(--gold); margin-bottom:10px;
+    background:linear-gradient(135deg, rgba(212,168,83,.22), rgba(212,168,83,.08));
+    color:var(--gold-bright); font-weight:800; font-size:1em; font-family:inherit; cursor:pointer;
+    animation:powerGlow 2s ease-in-out infinite;
+  }
+  @keyframes powerGlow{ 50%{ box-shadow:0 0 18px rgba(212,168,83,.4); } }
+  .ptarget-row{ display:flex; align-items:center; justify-content:space-between; padding:13px 12px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .ptarget-row:active{ background:var(--surface2); }
+  .ptarget-row .pn{ font-weight:600; }
 
   /* BOTTOM SHEETS */
   .sheet-bg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:flex-end; z-index:50; backdrop-filter:blur(2px); }
@@ -186,6 +197,7 @@
     <button id="joinBtn">انضمام</button>
     <div id="joinErr"></div>
     <div id="authHint" style="margin-top:16px;font-size:.85em;color:var(--text-dim);"></div>
+    <a href="/" style="display:inline-block;margin-top:18px;color:var(--text-dim);text-decoration:none;font-size:.9em;">← الصفحة الرئيسية</a>
   </div>
 
   <div id="waiting" class="hidden"><div class="spinner"></div>بانتظار بدء المضيف للعبة...</div>
@@ -207,9 +219,19 @@
         <div class="timer mono" id="timerBox">⏱ <span class="tval" id="myTimer">--:--</span></div>
       </div>
     </div>
+    <button class="power-btn hidden" id="powerBtn">بطاقتك</button>
     <button class="liquidate-btn" id="liquidateBtn">💰 تسييل المحفظة بالكامل</button>
     <h4 class="section-lbl">السوق</h4>
     <div id="stocksList"></div>
+  </div>
+
+  <!-- POWER TARGET SHEET (لاختيار منافس لتجميده) -->
+  <div id="powerTargetBg" class="sheet-bg hidden">
+    <div class="sheet">
+      <div class="modal-hdr"><h3>🧊 اختر منافساً لتجميده 10 ثوانٍ</h3></div>
+      <div id="powerTargetList"></div>
+      <button class="closeBtn" id="closePowerTarget">إلغاء</button>
+    </div>
   </div>
 
   <!-- END -->
@@ -412,9 +434,47 @@ socket.on('player:update', p => {
   pill.textContent = (p.gainPct>0?'+':'') + p.gainPct + '%';
   pill.className = 'gain-pill mono ' + (p.gainPct>0?'up':(p.gainPct<0?'down':'flat'));
   updateMarginBtn();
+  updatePowerBtn();
   if (latestState && latestState.status === 'running') renderStocks(latestState);
   if (!document.getElementById('ordersBg').classList.contains('hidden')) renderOrders();
 });
+
+function updatePowerBtn(){
+  const btn = document.getElementById('powerBtn');
+  if (!myState || !myState.powerCard || !myState.powerMeta) { btn.classList.add('hidden'); return; }
+  btn.classList.remove('hidden');
+  const m = myState.powerMeta;
+  btn.textContent = `${m.icon} بطاقتك: ${m.title} — اضغط للاستخدام`;
+  btn.title = m.desc;
+}
+document.getElementById('powerBtn').addEventListener('click', () => {
+  if (!myState || !myState.powerCard) return;
+  if (myState.powerMeta && myState.powerMeta.target) {
+    // يحتاج هدف (تجميد منافس) — افتح قائمة المنافسين
+    const list = document.getElementById('powerTargetList');
+    const opps = (myState.opponents || []);
+    if (!opps.length) { toast('لا يوجد منافسون لتجميدهم'); return; }
+    list.innerHTML = opps.map(o => `<div class="ptarget-row" data-id="${o.id}"><span class="pn">${escapeHtml(o.name)}${o.isBot?' 🤖':''}</span><span>🧊</span></div>`).join('');
+    list.querySelectorAll('.ptarget-row').forEach(row => {
+      row.addEventListener('click', () => {
+        socket.emit('player:usePower', { code: myCode, targetId: row.dataset.id });
+        document.getElementById('powerTargetBg').classList.add('hidden');
+      });
+    });
+    document.getElementById('powerTargetBg').classList.remove('hidden');
+  } else {
+    socket.emit('player:usePower', { code: myCode });
+  }
+});
+document.getElementById('closePowerTarget').addEventListener('click', () => document.getElementById('powerTargetBg').classList.add('hidden'));
+
+socket.on('power:granted', ({ key, meta }) => {
+  if (myState) { myState.powerCard = key; myState.powerMeta = meta; }
+  updatePowerBtn();
+  if (key && meta) { toast(`${meta.icon} حصلت على بطاقة: ${meta.title}`); playChime('pos'); }
+});
+socket.on('power:insider', ({ text, type }) => { toast(text, 'insider'); playChime(type === 'pos' ? 'pos' : 'neg'); });
+socket.on('power:done', ({ text }) => { toast(text); playChime('pos'); });
 
 function updateMarginBtn(){
   const btn = document.getElementById('marginBtn');

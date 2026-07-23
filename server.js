@@ -13,6 +13,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// شبكة أمان: أي خطأ غير متوقّع لا يُسقط السيرفر ويعلّق كل الجلسات — نسجّله ونكمل
+process.on('uncaughtException', (err) => { console.error('🛑 uncaughtException:', err && err.stack || err); });
+process.on('unhandledRejection', (err) => { console.error('🛑 unhandledRejection:', err && err.stack || err); });
+
 // ------------------------------------------------------------
 //  Supabase (تسجيل الدخول + حفظ الإنجازات) — اختياري تماماً.
 //  إذا ما ضبطت SUPABASE_URL / SUPABASE_SERVICE_KEY كمتغيرات بيئة،
@@ -36,6 +40,17 @@ if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
 app.set('trust proxy', 1);
 app.use(express.static(__dirname + '/public'));
 app.get('/healthz', (req, res) => res.send('ok'));
+
+// إحصائيات مباشرة للصفحة الرئيسية: كم جلسة تعمل الآن وكم لاعب
+app.get('/api/stats', (req, res) => {
+  let liveSessions = 0, livePlayers = 0, lobbies = 0;
+  for (const g of games.values()) {
+    const real = [...g.players.values()].filter(p => !p.isBot).length;
+    if (g.status === 'running') { liveSessions++; livePlayers += real; }
+    else if (g.status === 'lobby') lobbies++;
+  }
+  res.json({ liveSessions, livePlayers, lobbies });
+});
 
 // ------------------------------------------------------------
 //  بيانات الأسهم الأساسية — 3 قوائم يختار المضيف واحدة قبل البدء
@@ -333,6 +348,8 @@ const MARGIN_MAX_USES = 3;   // عدد مرات التمويل المسموحة 
 
 function round2(n) { return Math.round(n * 100) / 100; }
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+// يشغّل دالة داخل حماية حتى لا يوقف خطأ واحد المؤقّتات ويعلّق اللعبة
+function safe(fn) { try { return fn(); } catch (e) { console.error('⚠️ خطأ محصور:', e && e.message); } }
 function isSuddenDeath(game) { return game.status === 'running' && (game.endTime - Date.now()) <= 60000; }
 function spreadFor(game) { return isSuddenDeath(game) ? SPREAD * 2 : SPREAD; }
 
@@ -372,8 +389,11 @@ function generateStockProfile(baseVol) {
   // تقييم المخاطرة يُشتق من التقلب واحتمال الأحداث المتطرفة
   const riskScore = volatility / 0.06 * 0.6 + extremeProb / 0.09 * 0.4;
   const riskRating = RISK_LABELS[Math.min(3, Math.floor(riskScore * 4))];
-  const tradingSpeed = SPEED_LABELS[randInt(0, 2)];
-  return { volatility, liquidity, avgVolume, trendStrength, newsSensitivity, recoverySpeed, extremeProb, sentimentBeta, riskRating, tradingSpeed };
+  const speedIdx = randInt(0, 2); // 0=بطيء 1=متوسط 2=سريع
+  const tradingSpeed = SPEED_LABELS[speedIdx];
+  // كل سهم يتحرّك بجدوله الخاص: السريع كل ~4-7ث، المتوسط ~8-12ث، البطيء ~13-20ث
+  const updateEveryMs = [randInt(13000, 20000), randInt(8000, 12000), randInt(4000, 7000)][speedIdx];
+  return { volatility, liquidity, avgVolume, trendStrength, newsSensitivity, recoverySpeed, extremeProb, sentimentBeta, riskRating, tradingSpeed, updateEveryMs };
 }
 
 // يعيّن "نظام سوق" (regime) جديد للسهم: صاعد/هابط/تجميع/اختراق/تصحيح/انعكاس
@@ -438,6 +458,7 @@ function freshStocks(listKey) {
       flow: 0,
       newsDrift: 0,
       newsDriftTicks: 0,
+      nextTickAt: 0,
       regime: 'consolidation',
       regimeVolMult: 1,
       regimeTicksLeft: 0,
@@ -464,19 +485,20 @@ function pickWildStocks(game, durationMs) {
   const moonIdx = Math.floor(Math.random() * pool.length);
   const moon = pool[moonIdx];
 
-  const ticks = Math.max(1, Math.floor(durationMs / TICK_MS));
+  // عدد تحديثات كل سهم يعتمد على سرعته الخاصة (كل سهم له جدوله)، فنحسب الانحدار حسب سرعته
+  const ticksFor = s => Math.max(1, Math.floor(durationMs / (s.updateEveryMs || 10000)));
   doomed.isDoomed = true;
   doomed.forcedTrend = true;
   // 40% فرصة أن الشركة تنهار للإفلاس الكامل، غير ذلك تهبط بشدة لكن تبقى حية
   const goesBankrupt = Math.random() < 0.4;
   doomed.minPrice = round2(doomed.startPrice * (goesBankrupt ? 0.001 : 0.02));
-  doomed.trend = Math.log(goesBankrupt ? 0.008 : 0.05) / ticks;
+  doomed.trend = Math.log(goesBankrupt ? 0.008 : 0.05) / ticksFor(doomed);
   doomed.regime = 'trending_down';
 
   moon.isMooning = true;
   moon.forcedTrend = true;
   moon.maxPrice = round2(moon.startPrice * 30);
-  moon.trend = Math.log(12) / ticks; // يرتفع نحو ~12 ضعف سعره الأصلي
+  moon.trend = Math.log(12) / ticksFor(moon); // يرتفع نحو ~12 ضعف سعره الأصلي
   moon.regime = 'trending_up';
 
   addNews(game, '📉 تحذير من مصادر السوق: أحد الأسهم مقبل على انهيار حاد هذه الجولة!', 'neg', null);
@@ -520,6 +542,8 @@ function newPlayer(name) {
     doubleDividend: false,
     frozenStock: null,
     frozenUntil: 0,
+    frozenAllUntil: 0,     // تجميد كامل (من بطاقة قوة منافس)
+    powerCard: null,       // بطاقة القوة الحالية المتاحة للاعب
     gotLuckyCard: false,
     marginActive: false,
     marginLoan: 0,
@@ -715,6 +739,11 @@ function playerState(game, socketId) {
     noSpreadNext: p.noSpreadNext,
     doubleDividend: p.doubleDividend,
     frozenStock: p.frozenUntil > Date.now() ? p.frozenStock : null,
+    frozenAllUntil: p.frozenAllUntil > Date.now() ? p.frozenAllUntil : 0,
+    powerCard: p.powerCard || null,
+    powerMeta: p.powerCard ? POWERS[p.powerCard] : null,
+    // قائمة مبسّطة بالمنافسين لاختيار هدف بطاقة التجميد (بدون كشف أرصدتهم)
+    opponents: [...game.players.values()].filter(o => o.id !== p.id).map(o => ({ id: o.id, name: o.name, isBot: !!o.isBot })),
     marginActive: p.marginActive,
     marginLoan: p.marginLoan,
     marginExpiresAt: p.marginActive ? p.marginExpiresAt : 0,
@@ -741,77 +770,90 @@ function broadcast(game) {
 
 function addNews(game, text, type, stockId, kind) {
   game.news.push({ text, type, stockId, t: Date.now(), kind: kind || 'news' });
+  if (game.news.length > 50) game.news.shift(); // منع نمو غير محدود
   io.to('room:' + game.code).emit('news:event', { text, type, stockId, kind: kind || 'news' });
 }
 
 // ------------------------------------------------------------
 //  حلقات اللعبة
 // ------------------------------------------------------------
-// المحرك الرئيسي: يحسب سعر كل سهم من مكوّنات واقعية بدل المشي العشوائي البسيط
-function tickPrices(game) {
+// يحدّث سعر سهم واحد فقط (كل سهم له جدوله الزمني الخاص — سريع/بطيء)
+function tickOneStock(game, s) {
+  if (s.bankrupt) return; // توقف التداول تماماً، السعر ثابت عند الصفر
   const suddenDeath = isSuddenDeath(game);
   const volMult = suddenDeath ? 1.6 : 1;
+  const open = s.price;
 
-  // 1) تطوّر مزاج السوق العام ببطء (يؤثر على كل الأسهم حسب حساسية كل سهم)
-  game.sentiment = clamp((game.sentiment || 0) * 0.92 + randn() * 0.05, -1, 1);
+  // إدارة نظام السوق (regime): يتغيّر كل عدة تحديثات فيولّد اتجاهات وتصحيحات واختراقات
+  if (!s.forcedTrend) {
+    if ((s.regimeTicksLeft = (s.regimeTicksLeft || 0) - 1) <= 0) assignRegime(s);
+  }
 
+  // مكوّنات العائد لهذا التحديث (كنِسَب مئوية)
+  let ret = 0;
+  ret += s.trend;                                   // الاتجاه/الانحدار الحالي
+  ret += 0.15 * (s.momentum || 0);                  // استمرار الزخم
+  if (!s.forcedTrend) {                              // عودة نحو القيمة العادلة (تُنتج تصحيحات صحية)
+    const gap = (s.fairValue - open) / open;
+    ret += s.recoverySpeed * gap;
+  }
+  ret += 0.0045 * s.sentimentBeta * (game.sentiment || 0); // تأثّر بمزاج السوق العام
+  // ضغط التداول (حجم/سيولة): الأسهم منخفضة السيولة فقط تتحرك بوضوح من الصفقات
+  const flowImpact = clamp((s.flow || 0) / (s.liquidity * FLOW_DIVISOR), -FLOW_MAX_IMPACT, FLOW_MAX_IMPACT);
+  ret += flowImpact;
+  s.flow = (s.flow || 0) * 0.4;                     // يتلاشى ضغط التداول تدريجياً
+  // أثر الأخبار المستمر لعدة دقائق بعد الحدث المهم
+  if (s.newsDriftTicks > 0) { ret += s.newsDrift; s.newsDriftTicks--; }
+  // الضوضاء الطبيعية (حسب تقلب السهم ونظام السوق الحالي)
+  ret += randn() * s.volatility * volMult * (s.regimeVolMult || 1);
+  // حدث متطرف نادر (قفزة/هبوط مفاجئ) حسب شخصية السهم
+  if (Math.random() < s.extremeProb * 0.12) ret += (Math.random() < 0.5 ? 1 : -1) * s.volatility * rnd(3, 6);
+
+  const cap = s.forcedTrend ? 0.5 : 0.16; // قصّ العائد لتفادي القفزات غير الواقعية
+  ret = clamp(ret, -cap, cap);
+
+  const close = clamp(open * (1 + ret), s.minPrice, s.maxPrice);
+  s.prevPrice = open;
+  s.price = close;
+  s.changePct = Math.round(((close - open) / open) * 10000) / 100;
+
+  s.momentum = 0.7 * (s.momentum || 0) + 0.3 * ((close - open) / open);
+  if (!s.forcedTrend) {
+    s.fairValue = clamp(s.fairValue * (1 + s.trend * 0.6) + (close - s.fairValue) * 0.06, s.minPrice, s.maxPrice);
+  }
+
+  s.candles.push(makeCandle(open, close));
+  if (s.candles.length > 60) s.candles.shift();
+
+  // إفلاس: إذا سهم "منهار" هبط تحت 3% من سعره الأصلي، تُعلن الشركة إفلاسها ويتوقف التداول
+  if (s.isDoomed && !s.bankrupt && s.price <= s.startPrice * 0.03) {
+    s.bankrupt = true;
+    s.tradingHalted = true;
+    s.price = 0.01;
+    s.changePct = -100;
+    s.candles.push(makeCandle(open, 0.01));
+    addNews(game, `💀 إفلاس! أعلنت ${s.icon} ${s.name} إفلاسها وتوقف التداول عليها فوراً`, 'neg', s.id, 'bankruptcy');
+  }
+}
+
+// المحرك: يعمل كل ثانية، ويحدّث كل سهم عند حلول موعده الخاص (كل سهم بسرعته: سريع/متوسط/بطيء)
+function marketDriver(game) {
+  if (game.status !== 'running') return;
+  const now = Date.now();
+  // مزاج السوق يتطوّر ببطء كل دورة
+  game.sentiment = clamp((game.sentiment || 0) * 0.985 + randn() * 0.02, -1, 1);
+  const sdMult = isSuddenDeath(game) ? 0.5 : 1; // الموت المفاجئ يسرّع كل الأسهم
+  let changed = false;
   for (const s of game.stocks) {
-    if (s.bankrupt) continue; // توقف التداول تماماً، السعر ثابت عند الصفر
-    const open = s.price;
-
-    // 2) إدارة نظام السوق (regime): يتغيّر كل عدة تِكّات فيولّد اتجاهات وتصحيحات واختراقات
-    if (!s.forcedTrend) {
-      if ((s.regimeTicksLeft = (s.regimeTicksLeft || 0) - 1) <= 0) assignRegime(s);
-    }
-
-    // 3) مكوّنات العائد لهذا التِّك (كنِسَب مئوية)
-    let ret = 0;
-    ret += s.trend;                                   // الاتجاه/الانحدار الحالي
-    ret += 0.15 * (s.momentum || 0);                  // استمرار الزخم
-    if (!s.forcedTrend) {                              // عودة نحو القيمة العادلة (تُنتج تصحيحات صحية)
-      const gap = (s.fairValue - open) / open;
-      ret += s.recoverySpeed * gap;
-    }
-    ret += 0.0045 * s.sentimentBeta * game.sentiment; // تأثّر بمزاج السوق العام
-    // ضغط التداول (حجم/سيولة): الأسهم منخفضة السيولة فقط تتحرك بوضوح من الصفقات
-    const flowImpact = clamp((s.flow || 0) / (s.liquidity * FLOW_DIVISOR), -FLOW_MAX_IMPACT, FLOW_MAX_IMPACT);
-    ret += flowImpact;
-    s.flow = (s.flow || 0) * 0.4;                     // يتلاشى ضغط التداول تدريجياً
-    // أثر الأخبار المستمر لعدة دقائق بعد الحدث المهم
-    if (s.newsDriftTicks > 0) { ret += s.newsDrift; s.newsDriftTicks--; }
-    // الضوضاء الطبيعية (حسب تقلب السهم ونظام السوق الحالي)
-    ret += randn() * s.volatility * volMult * (s.regimeVolMult || 1);
-    // حدث متطرف نادر (قفزة/هبوط مفاجئ) حسب شخصية السهم
-    if (Math.random() < s.extremeProb * 0.12) ret += (Math.random() < 0.5 ? 1 : -1) * s.volatility * rnd(3, 6);
-
-    // قصّ العائد لكل تِّك لتفادي القفزات غير الواقعية
-    const cap = s.forcedTrend ? 0.5 : 0.16;
-    ret = clamp(ret, -cap, cap);
-
-    const close = clamp(open * (1 + ret), s.minPrice, s.maxPrice);
-    s.prevPrice = open;
-    s.price = close;
-    s.changePct = Math.round(((close - open) / open) * 10000) / 100;
-
-    // تحديث الزخم (متوسط متحرك أُسّي للعائد) والقيمة العادلة تتبع الاتجاه ببطء
-    s.momentum = 0.7 * (s.momentum || 0) + 0.3 * ((close - open) / open);
-    if (!s.forcedTrend) {
-      s.fairValue = clamp(s.fairValue * (1 + s.trend * 0.6) + (close - s.fairValue) * 0.06, s.minPrice, s.maxPrice);
-    }
-
-    s.candles.push(makeCandle(open, close));
-    if (s.candles.length > 60) s.candles.shift();
-
-    // إفلاس: إذا سهم "منهار" هبط تحت 3% من سعره الأصلي، تُعلن الشركة إفلاسها ويتوقف التداول
-    if (s.isDoomed && !s.bankrupt && s.price <= s.startPrice * 0.03) {
-      s.bankrupt = true;
-      s.tradingHalted = true;
-      s.price = 0.01;
-      s.changePct = -100;
-      s.candles.push(makeCandle(open, 0.01));
-      addNews(game, `💀 إفلاس! أعلنت ${s.icon} ${s.name} إفلاسها وتوقف التداول عليها فوراً`, 'neg', s.id, 'bankruptcy');
+    if (s.bankrupt) continue;
+    if (now >= (s.nextTickAt || 0)) {
+      tickOneStock(game, s);
+      // الموعد القادم عشوائي حول إيقاع السهم (فلا يتحرك بشكل ميكانيكي منتظم)
+      s.nextTickAt = now + (s.updateEveryMs || 10000) * sdMult * (0.7 + Math.random() * 0.6);
+      changed = true;
     }
   }
+  if (changed) broadcast(game);
 }
 
 // ============================================================
@@ -1002,14 +1044,13 @@ function newBot(name, styleKey, diffKey) {
 }
 
 function spawnBots(game, count, difficulty) {
-  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
   const styleKeys = Object.keys(BOT_STYLES);
   const diffKeys = Object.keys(BOT_DIFFICULTY);
   const n = clamp(Math.floor(count || 0), 0, 6);
   for (let i = 0; i < n; i++) {
     const style = styleKeys[i % styleKeys.length]; // توزيع الأساليب لتنوّع السوق
     const diffKey = (difficulty === 'mixed' || !BOT_DIFFICULTY[difficulty]) ? pick(diffKeys) : difficulty;
-    const bot = newBot(names[i % names.length], style, diffKey);
+    const bot = newBot('كمبيوتر ' + (i + 1), style, diffKey);
     game.players.set(bot.id, bot);
   }
 }
@@ -1056,6 +1097,7 @@ function botTrade(game, bot, stock, action, qty) {
 }
 
 function botAct(game, bot) {
+  if (bot.frozenAllUntil > Date.now()) return; // بوت مجمّد بواسطة بطاقة تجميد لاعب
   const live = game.stocks.filter(s => !s.bankrupt && !s.tradingHalted);
   if (!live.length) return;
   const p = bot.botParams, d = bot.diff;
@@ -1111,6 +1153,63 @@ function botTick(game) {
   if (acted) broadcast(game);
 }
 
+// ============================================================
+//  بطاقات القوة للاعبين (Power Cards) — قدرات يستخدمها اللاعب
+// ============================================================
+const POWERS = {
+  insider:  { icon: '🔮', title: 'خبر حصري',   desc: 'اعرف الخبر القادم قبل الجميع بـ20 ثانية', target: false },
+  freeze:   { icon: '🧊', title: 'تجميد منافس', desc: 'جمّد تداول منافس 10 ثوانٍ', target: true },
+  fakenews: { icon: '📰', title: 'خبر وهمي',   desc: 'أرسل خبراً عاجلاً وهمياً لمنافسيك (لا يؤثر على السعر)', target: false },
+  cash:     { icon: '💵', title: 'دفعة سرية',  desc: 'احصل على 5,000$ فوراً', target: false },
+};
+const POWER_COOLDOWN_MS = 90000; // بعد الاستخدام يحصل اللاعب على بطاقة جديدة بعد 90 ثانية
+
+function grantPower(game, player) {
+  if (player.isBot) return;
+  player.powerCard = pick(Object.keys(POWERS));
+  io.to(player.id).emit('power:granted', { key: player.powerCard, meta: POWERS[player.powerCard] });
+}
+
+function usePower(game, player, targetId) {
+  const key = player.powerCard;
+  if (!key || !POWERS[key]) return { ok: false, msg: 'ما عندك بطاقة قوة الآن' };
+  const now = Date.now();
+  const live = game.stocks.filter(s => !s.bankrupt && !s.tradingHalted);
+
+  if (key === 'insider') {
+    if (!live.length) return { ok: false, msg: 'السوق متوقف الآن' };
+    const s = pick(live), ev = pick(COMPANY_NEWS), sign = ev.type === 'pos' ? 1 : -1;
+    io.to(player.id).emit('power:insider', { text: `🔮 حصري (بعد 20 ثانية): ${s.icon} ${s.name} — ${ev.text}`, type: ev.type });
+    const k = 'insider_' + now + '_' + Math.random().toString(36).slice(2, 6);
+    game.timers[k] = setTimeout(() => safe(() => {
+      if (game.status !== 'running' || s.bankrupt) return;
+      applyNewsImpact(game, s, sign, rnd(ev.min, ev.max), ev.dur);
+      addNews(game, `${s.icon} ${s.name}: ${ev.text}`, ev.type, s.id, 'news');
+      broadcast(game);
+      delete game.timers[k];
+    }), 20000);
+  } else if (key === 'freeze') {
+    const target = game.players.get(targetId);
+    if (!target || target.id === player.id) return { ok: false, msg: 'اختر منافساً صحيحاً' };
+    target.frozenAllUntil = now + 10000;
+    if (!target.isBot) io.to(target.id).emit('news:event', { text: '🧊 جمّدك منافس! لا يمكنك التداول 10 ثوانٍ', type: 'neg', kind: 'news' });
+    io.to(player.id).emit('power:done', { text: `🧊 جمّدت ${target.name} لمدة 10 ثوانٍ` });
+  } else if (key === 'fakenews') {
+    const fakes = ['🚨 عاجل: مخاوف من انهيار وشيك بالأسواق!', '🚨 عاجل: تسريبات عن ارتفاع صاروخي قادم!', '🚨 عاجل: شائعات بإيقاف التداول قريباً!', '🚨 عاجل: خبر كبير يهزّ السوق خلال دقائق!'];
+    const txt = pick(fakes);
+    for (const p of game.players.values()) if (p.id !== player.id && !p.isBot) io.to(p.id).emit('news:event', { text: txt, type: 'neg', kind: 'news' });
+    io.to(player.id).emit('power:done', { text: '📰 أرسلت خبراً وهمياً لمنافسيك (السعر لم يتأثر فعلياً)' });
+  } else if (key === 'cash') {
+    player.cash += 5000;
+    io.to(player.id).emit('power:done', { text: '💵 حصلت على 5,000$' });
+  }
+
+  player.powerCard = null;
+  io.to(player.id).emit('power:granted', { key: null, meta: null });
+  game.timers['power_' + player.token] = setTimeout(() => safe(() => { if (game.status === 'running') grantPower(game, player); }), POWER_COOLDOWN_MS);
+  return { ok: true };
+}
+
 function startGame(game, durationMs, listKey) {
   game.status = 'running';
   game.durationMs = durationMs;
@@ -1119,16 +1218,23 @@ function startGame(game, durationMs, listKey) {
   game.listKey = STOCK_LISTS[listKey] ? listKey : (game.listKey || 'favorites');
   game.stocks = freshStocks(game.listKey);
   pickWildStocks(game, durationMs);
-  game.newsPool = buildNewsPoolForGame(game);
   scheduleIPO(game, durationMs);
 
-  game.timers.price = setInterval(() => { tickPrices(game); broadcast(game); }, TICK_MS);
+  // نبعثر أول موعد تحديث لكل سهم حتى لا تتحرك كلها معاً (كل سهم بجدوله)
+  const now = Date.now();
+  for (const s of game.stocks) s.nextTickAt = now + Math.random() * s.updateEveryMs;
+
+  // منح كل لاعب حقيقي بطاقة قوة عشوائية عند البدء
+  for (const p of game.players.values()) if (!p.isBot) grantPower(game, p);
+
+  // المحرك يعمل كل ثانية ويحدّث كل سهم عند موعده الخاص (وقّينا كل مؤقّت من الأخطاء)
+  game.timers.driver = setInterval(() => safe(() => marketDriver(game)), 1000);
   scheduleNews(game);
-  game.timers.dividend = setInterval(() => { payDividends(game); broadcast(game); }, 90000);
-  game.timers.card = setInterval(() => { drawCard(game); }, 50000);
-  game.timers.bots = setInterval(() => botTick(game), BOT_TICK_MS);
-  game.timers.broadcast = setInterval(() => broadcast(game), 1500);
-  game.timers.end = setTimeout(() => endGame(game), durationMs);
+  game.timers.dividend = setInterval(() => safe(() => { payDividends(game); broadcast(game); }), 90000);
+  game.timers.card = setInterval(() => safe(() => drawCard(game)), 50000);
+  game.timers.bots = setInterval(() => safe(() => botTick(game)), BOT_TICK_MS);
+  game.timers.broadcast = setInterval(() => safe(() => broadcast(game)), 1500);
+  game.timers.end = setTimeout(() => safe(() => endGame(game)), durationMs);
 
   const suddenDeathDelay = Math.max(0, durationMs - 60000);
   if (durationMs > 60000) {
@@ -1157,7 +1263,7 @@ function scheduleIPO(game, durationMs) {
       sector: 'اكتتاب جديد', personality: 'Meme', dividend: false,
       ...profile,
       price, startPrice: price, prevPrice: price, changePct: 0,
-      fairValue: price, trend: 0, momentum: 0, flow: 0, newsDrift: 0, newsDriftTicks: 0,
+      fairValue: price, trend: 0, momentum: 0, flow: 0, newsDrift: 0, newsDriftTicks: 0, nextTickAt: 0,
       regime: 'breakout', regimeVolMult: 1.4, regimeTicksLeft: 0, forcedTrend: false,
       minPrice: round2(price * 0.05), maxPrice: round2(price * 15),
       isDoomed: false, isMooning: false, bankrupt: false, tradingHalted: false,
@@ -1178,13 +1284,13 @@ function scheduleNews(game) {
   const base = inSuddenDeath ? 8000 : 20000;
   const span = inSuddenDeath ? 8000 : 20000;
   const delay = base + Math.random() * span; // أسرع بمرحلة الموت المفاجئ
-  game.timers.news = setTimeout(() => {
+  game.timers.news = setTimeout(() => safe(() => {
     if (game.status !== 'running') return;
     if (Math.random() < 0.22) triggerSpecialEvent(game);
     else triggerNews(game);
     broadcast(game);
     scheduleNews(game);
-  }, delay);
+  }), delay);
 }
 
 // يحسب إحصائيات نهاية الجولة (أعلى ربح، أكبر خسارة، أسرع صفقة...) لكل لاعب ويحدد أبرزها للعرض
@@ -1324,6 +1430,7 @@ io.on('connection', socket => {
     for (const p of game.players.values()) {
       p.cash = START_CASH; p.holdings = {}; p.costBasis = {}; p.orders = []; p.noSpreadNext = false;
       p.doubleDividend = false; p.frozenStock = null; p.frozenUntil = 0; p.gotLuckyCard = false;
+      p.frozenAllUntil = 0; p.powerCard = null;
       p.marginActive = false; p.marginLoan = 0; p.marginExpiresAt = 0; p.marginUsesLeft = MARGIN_MAX_USES;
       p.history = [START_CASH];
     }
@@ -1383,6 +1490,10 @@ io.on('connection', socket => {
     qty = Math.floor(Number(qty));
     if (!qty || qty <= 0) { socket.emit('errorMsg', 'اختر كمية صحيحة'); return; }
 
+    if (player.frozenAllUntil > Date.now()) {
+      socket.emit('errorMsg', '🧊 أنت مجمّد مؤقتاً بواسطة منافس، انتظر قليلاً');
+      return;
+    }
     if (player.frozenStock === stockId && player.frozenUntil > Date.now()) {
       socket.emit('errorMsg', 'هذا السهم مجمد مؤقتاً بسبب بطاقة تحدي!');
       return;
@@ -1419,6 +1530,7 @@ io.on('connection', socket => {
     if (!game || game.status !== 'running') return;
     const player = game.players.get(socket.id);
     if (!player) return;
+    if (player.frozenAllUntil > Date.now()) { socket.emit('errorMsg', '🧊 أنت مجمّد مؤقتاً، انتظر قليلاً'); return; }
     const useMid = player.noSpreadNext;
     let soldCount = 0, skippedFrozen = false;
     for (const s of game.stocks) {
@@ -1440,7 +1552,18 @@ io.on('connection', socket => {
     if (!game || game.status !== 'running') return;
     const player = game.players.get(socket.id);
     if (!player) return;
+    if (player.frozenAllUntil > Date.now()) { socket.emit('errorMsg', '🧊 أنت مجمّد مؤقتاً، انتظر قليلاً'); return; }
     const res = activateMargin(game, player);
+    if (!res.ok) { socket.emit('errorMsg', res.msg); return; }
+    broadcast(game);
+  });
+
+  socket.on('player:usePower', ({ code, targetId }) => {
+    const game = games.get(code);
+    if (!game || game.status !== 'running') return;
+    const player = game.players.get(socket.id);
+    if (!player) return;
+    const res = usePower(game, player, targetId);
     if (!res.ok) { socket.emit('errorMsg', res.msg); return; }
     broadcast(game);
   });

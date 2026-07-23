@@ -57,6 +57,12 @@
   .feature .fs{ color:var(--text-dim2); font-size:.78em; margin-top:2px; }
 
   footer{ text-align:center; color:var(--text-dim2); font-size:.85em; padding:20px; }
+
+  .live-bar{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:14px auto 0; }
+  .live-pill{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:8px 18px; font-size:.92em; }
+  .live-pill .dot{ width:9px; height:9px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); animation:livePulse 1.6s infinite; }
+  @keyframes livePulse{ 50%{ opacity:.35; } }
+  .live-pill b{ color:var(--gold-bright); font-family:'IBM Plex Mono',monospace; }
 </style>
 </head>
 <body>
@@ -71,6 +77,9 @@
 <div class="hero">
   <div class="tagline mono">TRADE · COMPETE · DOMINATE</div>
   <p>لعبة محفظة أسهم جماعية بين الأصدقاء — تنافسوا مباشرة في تداول حي، وابنوا سجل إنجازاتكم عبر الزمن.</p>
+  <div class="live-bar" id="liveBar">
+    <div class="live-pill"><span class="dot"></span> <span id="liveText">جارٍ التحقق من الجلسات المباشرة...</span></div>
+  </div>
 </div>
 
 <div class="actions">
@@ -92,8 +101,9 @@
 </div>
 
 <div class="features">
-  <div class="feature"><div class="fic">⚡</div><div><div class="ft">تداول حي</div><div class="fs">أسعار تتحرك كل 11 ثانية</div></div></div>
-  <div class="feature"><div class="fic">🎯</div><div><div class="ft">3 قوائم أسهم</div><div class="fs">مفضلة، تاسي، ناسداك</div></div></div>
+  <div class="feature"><div class="fic">⚡</div><div><div class="ft">سوق واقعي حي</div><div class="fs">كل سهم يتحرك بسرعته الخاصة</div></div></div>
+  <div class="feature"><div class="fic">🤖</div><div><div class="ft">منافسون آليون</div><div class="fs">لاعبو كمبيوتر بمستويات ذكاء</div></div></div>
+  <div class="feature"><div class="fic">🃏</div><div><div class="ft">بطاقات قوة</div><div class="fs">أخبار حصرية، تجميد، وأكثر</div></div></div>
   <div class="feature"><div class="fic">🏅</div><div><div class="ft">إنجازات دائمة</div><div class="fs">تُحفظ بحسابك للأبد</div></div></div>
 </div>
 
@@ -115,6 +125,23 @@ async function initAuthArea(){
   }
 }
 initAuthArea();
+
+async function refreshLiveStats(){
+  try{
+    const r = await fetch('/api/stats', { cache: 'no-store' });
+    const s = await r.json();
+    const el = document.getElementById('liveText');
+    if (s.liveSessions > 0) {
+      el.innerHTML = `<b>${s.liveSessions}</b> جلسة مباشرة الآن · <b>${s.livePlayers}</b> لاعب يتداول`;
+    } else if (s.lobbies > 0) {
+      el.innerHTML = `<b>${s.lobbies}</b> غرفة بانتظار البدء — كن أول من ينضم!`;
+    } else {
+      el.textContent = 'لا توجد جلسات نشطة حالياً — ابدأ أول جلسة!';
+    }
+  }catch(e){ document.getElementById('liveText').textContent = 'ابدأ جلستك الآن'; }
+}
+refreshLiveStats();
+setInterval(refreshLiveStats, 15000);
 </script>
 </body>
 </html>
