@@ -182,6 +182,10 @@
   .mystats .mtile .ml{ color:var(--text-dim); font-size:.78em; margin-bottom:4px; }
   .mystats .mtile .mv{ font-weight:700; font-size:1.05em; }
   .mystats .mtile .mv.up{ color:var(--green); } .mystats .mtile .mv.down{ color:var(--red); }
+  .end-nav{ display:flex; flex-direction:column; gap:10px; max-width:420px; margin:26px auto 0; }
+  .end-btn{ display:block; text-align:center; padding:14px; border-radius:13px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-weight:700; font-size:1em; font-family:inherit; text-decoration:none; cursor:pointer; }
+  .end-btn.primary{ border:none; background:linear-gradient(135deg,var(--gold-bright),var(--gold)); color:#1a1200; font-weight:800; }
+  .end-btn:active{ transform:scale(.98); }
 </style>
 </head>
 <body>
@@ -245,6 +249,11 @@
     <div class="mystats hidden" id="myStats"></div>
     <h4 class="section-lbl">النتائج الكاملة</h4>
     <div id="fullResults"></div>
+    <div class="end-nav">
+      <button class="end-btn primary" id="endReplayBtn">🔄 جولة جديدة</button>
+      <a class="end-btn" href="/profile.html">👤 حسابي وإنجازاتي</a>
+      <a class="end-btn" href="/">🏠 الصفحة الرئيسية</a>
+    </div>
   </div>
 </div>
 
@@ -475,6 +484,12 @@ socket.on('power:granted', ({ key, meta }) => {
 });
 socket.on('power:insider', ({ text, type }) => { toast(text, 'insider'); playChime(type === 'pos' ? 'pos' : 'neg'); });
 socket.on('power:done', ({ text }) => { toast(text); playChime('pos'); });
+
+document.getElementById('endReplayBtn').addEventListener('click', () => {
+  // العودة لشاشة الانتظار حتى يبدأ المضيف جولة جديدة بنفس الكود
+  document.getElementById('end').classList.add('hidden');
+  document.getElementById('waiting').classList.remove('hidden');
+});
 
 function updateMarginBtn(){
   const btn = document.getElementById('marginBtn');

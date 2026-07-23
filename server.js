@@ -397,17 +397,22 @@ function generateStockProfile(baseVol) {
 }
 
 // يعيّن "نظام سوق" (regime) جديد للسهم: صاعد/هابط/تجميع/اختراق/تصحيح/انعكاس
+// إذا كان للسهم انحياز اتجاهي خفي (trendBias) فإنه يرجّح اتجاهه دون أن يجعله خطاً مستقيماً واضحاً
 function assignRegime(stock) {
-  if (stock.forcedTrend) return; // أسهم الانهيار/الصعود الصاروخي لها اتجاه ثابت
+  if (stock.forcedTrend) return; // أسهم الانهيار لها اتجاه ثابت
   const ts = stock.trendStrength;
+  const bias = stock.trendBias || 0; // -1..+1 تقريباً
   const r = Math.random();
+  // نرجّح احتمال الاتجاه الصاعد مقابل الهابط حسب الانحياز
+  const upBias = 0.26 + bias * 0.16;   // انحياز صعودي يزيد فرصة trending_up
+  const downBias = upBias + 0.24 - bias * 0.16;
   let regime, trend, volMult, dur;
-  if (r < 0.26)      { regime = 'trending_up';   trend =  ts * rnd(0.6, 1.6);  volMult = 1.0; dur = randInt(4, 9); }
-  else if (r < 0.50) { regime = 'trending_down'; trend = -ts * rnd(0.6, 1.6);  volMult = 1.0; dur = randInt(4, 9); }
-  else if (r < 0.70) { regime = 'consolidation'; trend =  0;                   volMult = 0.5; dur = randInt(3, 7); }
-  else if (r < 0.82) { regime = 'breakout';      trend = (Math.random() < 0.5 ? 1 : -1) * ts * rnd(1.6, 2.4); volMult = 1.5; dur = randInt(2, 4); }
-  else if (r < 0.92) { regime = 'pullback';      trend = -Math.sign(stock.momentum || 1) * ts * rnd(0.5, 1.0); volMult = 0.9; dur = randInt(2, 4); }
-  else               { regime = 'reversal';      trend = -Math.sign(stock.trend || 1) * ts * rnd(1.0, 1.6);   volMult = 1.2; dur = randInt(3, 6); }
+  if (r < upBias)         { regime = 'trending_up';   trend =  ts * rnd(0.6, 1.7);  volMult = 1.0; dur = randInt(4, 9); }
+  else if (r < downBias)  { regime = 'trending_down'; trend = -ts * rnd(0.6, 1.7);  volMult = 1.0; dur = randInt(4, 9); }
+  else if (r < 0.72)      { regime = 'consolidation'; trend =  ts * bias * 0.4;      volMult = 0.5; dur = randInt(3, 7); }
+  else if (r < 0.83)      { regime = 'breakout';      trend = (bias !== 0 ? Math.sign(bias) : (Math.random() < 0.5 ? 1 : -1)) * ts * rnd(1.6, 2.6); volMult = 1.5; dur = randInt(2, 4); }
+  else if (r < 0.92)      { regime = 'pullback';      trend = -Math.sign(stock.momentum || 1) * ts * rnd(0.5, 1.0); volMult = 0.9; dur = randInt(2, 4); }
+  else                    { regime = 'reversal';      trend = -Math.sign(stock.trend || 1) * ts * rnd(1.0, 1.6);   volMult = 1.2; dur = randInt(3, 6); }
   stock.regime = regime; stock.trend = trend; stock.regimeVolMult = volMult; stock.regimeTicksLeft = dur;
 }
 
@@ -463,6 +468,7 @@ function freshStocks(listKey) {
       regimeVolMult: 1,
       regimeTicksLeft: 0,
       forcedTrend: false,
+      trendBias: 0, // انحياز اتجاهي خفي (يُوزَّع عشوائياً على بعض الأسهم كل جولة)
       minPrice: round2(s.price * 0.05),
       maxPrice: round2(s.price * 15),
       isDoomed: false,
@@ -476,33 +482,43 @@ function freshStocks(listKey) {
   });
 }
 
-// يختار عشوائياً سهماً "منهاراً" وآخر "صاروخياً" لكل لعبة، ويحسب انحدار السعر
-// اللازم حتى يصل السهم لهدفه تقريباً مع نهاية الوقت المحدد للعبة
+// يوزّع انحيازات اتجاهية عشوائية على السوق بشكل عضوي (لا سهم "صاروخي" واضح من البداية)
+// عدة أسهم تأخذ ميولاً مختلفة (صعود/هبوط بقوى متفاوتة) فيظهر الفائز تدريجياً، مع احتمال إفلاس شركة.
 function pickWildStocks(game, durationMs) {
   const pool = [...game.stocks];
-  const doomedIdx = Math.floor(Math.random() * pool.length);
-  const doomed = pool.splice(doomedIdx, 1)[0];
-  const moonIdx = Math.floor(Math.random() * pool.length);
-  const moon = pool[moonIdx];
-
-  // عدد تحديثات كل سهم يعتمد على سرعته الخاصة (كل سهم له جدوله)، فنحسب الانحدار حسب سرعته
   const ticksFor = s => Math.max(1, Math.floor(durationMs / (s.updateEveryMs || 10000)));
-  doomed.isDoomed = true;
-  doomed.forcedTrend = true;
-  // 40% فرصة أن الشركة تنهار للإفلاس الكامل، غير ذلك تهبط بشدة لكن تبقى حية
-  const goesBankrupt = Math.random() < 0.4;
-  doomed.minPrice = round2(doomed.startPrice * (goesBankrupt ? 0.001 : 0.02));
-  doomed.trend = Math.log(goesBankrupt ? 0.008 : 0.05) / ticksFor(doomed);
-  doomed.regime = 'trending_down';
 
-  moon.isMooning = true;
-  moon.forcedTrend = true;
-  moon.maxPrice = round2(moon.startPrice * 30);
-  moon.trend = Math.log(12) / ticksFor(moon); // يرتفع نحو ~12 ضعف سعره الأصلي
-  moon.regime = 'trending_up';
+  // 1) إفلاس محتمل (ليس مضموناً كل جولة): سهم واحد ينحدر بقوة لكن بشكل متعرّج (ارتدادات) وقد يفلس
+  if (Math.random() < 0.55) {
+    const dIdx = Math.floor(Math.random() * pool.length);
+    const doomed = pool.splice(dIdx, 1)[0];
+    doomed.isDoomed = true;
+    doomed.forcedTrend = true;
+    const goesBankrupt = Math.random() < 0.5;
+    doomed.minPrice = round2(doomed.startPrice * (goesBankrupt ? 0.001 : 0.03));
+    doomed.trend = Math.log(goesBankrupt ? 0.01 : 0.08) / ticksFor(doomed);
+    doomed.volatility = Math.min(0.06, doomed.volatility * 2.2); // تذبذب أعلى = هبوط متعرّج غير واضح فوراً
+    doomed.regime = 'trending_down';
+  }
 
-  addNews(game, '📉 تحذير من مصادر السوق: أحد الأسهم مقبل على انهيار حاد هذه الجولة!', 'neg', null);
-  addNews(game, '📈 شائعات عن سهم واحد سيحقق أرقاماً خيالية هذه الجولة!', 'pos', null);
+  // 2) انحيازات اتجاهية عضوية على 3-5 أسهم (صعود أو هبوط بقوى متفاوتة)
+  const nBias = randInt(3, 5);
+  let strongestUp = null, strongestUpBias = 0;
+  for (let i = 0; i < nBias && pool.length; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const s = pool.splice(idx, 1)[0];
+    const dir = Math.random() < 0.58 ? 1 : -1;           // ميل بسيط للصعود
+    const strength = rnd(0.35, 1.0);                      // قوة الانحياز متفاوتة
+    s.trendBias = dir * strength;
+    s.trendStrength = s.trendStrength * rnd(2.0, 4.5);    // اتجاه أقوى لكنه يمرّ بتصحيحات (عضوي)
+    if (dir > 0 && strength > strongestUpBias) { strongestUpBias = strength; strongestUp = s; }
+    assignRegime(s);
+  }
+  // نعلّم أقوى سهم صاعد كـ"صاروخي" لأغراض الإنجاز فقط (بدون جعله خطاً مستقيماً واضحاً)
+  if (strongestUp) strongestUp.isMooning = true;
+
+  // تلميح عام غامض بدل كشف السهم بالتحديد
+  addNews(game, '📊 محللون: السوق يشهد تحركات قوية هذه الجولة.. راقبوا الاتجاهات بأنفسكم', 'pos', null);
 }
 
 function createGame(hostSocketId) {
@@ -890,6 +906,17 @@ const MARKET_NEWS = [
   { type: 'pos', text: '🌍 تحسّن مؤشرات الاقتصاد العالمي.. ارتفاع عام بالأسواق', min: 0.03, max: 0.06, dur: 8 },
   { type: 'neg', text: '🌍 أزمة اقتصادية عالمية مفاجئة.. هبوط حاد بالأسواق', min: 0.04, max: 0.08, dur: 10 },
   { type: 'pos', text: '🤖 طفرة في صناعة الذكاء الاصطناعي ترفع معنويات السوق', min: 0.02, max: 0.05, dur: 8 },
+  // أخبار سعودية اقتصادية وسياسية
+  { type: 'pos', text: '🇸🇦 رؤية 2030 تحقق إنجازاً جديداً.. تفاؤل واسع في السوق السعودي', min: 0.03, max: 0.06, dur: 10 },
+  { type: 'pos', text: '🇸🇦 صندوق الاستثمارات العامة يضخّ استثمارات ضخمة في السوق', min: 0.03, max: 0.07, dur: 10 },
+  { type: 'pos', text: '🏗️ إطلاق مرحلة جديدة من مشروع نيوم يحفّز الأسواق', min: 0.03, max: 0.06, dur: 9 },
+  { type: 'pos', text: '⭐ رفع التصنيف الائتماني للسعودية يعزّز ثقة المستثمرين', min: 0.02, max: 0.05, dur: 9 },
+  { type: 'pos', text: '🛢️ أوبك+ بقيادة السعودية تتفق على خفض الإنتاج.. ارتفاع أسعار النفط', min: 0.03, max: 0.06, dur: 9 },
+  { type: 'neg', text: '🛢️ تراجع حاد في أسعار النفط يضغط على الإيرادات السعودية', min: 0.03, max: 0.06, dur: 9 },
+  { type: 'pos', text: '✈️ موسم سياحي قياسي في السعودية يدعم الاقتصاد', min: 0.02, max: 0.05, dur: 8 },
+  { type: 'pos', text: '🤝 توقيع اتفاقيات اقتصادية دولية كبرى للسعودية', min: 0.02, max: 0.05, dur: 8 },
+  { type: 'neg', text: '⚡ توترات جيوسياسية في المنطقة تثير حذر المستثمرين', min: 0.03, max: 0.06, dur: 8 },
+  { type: 'pos', text: '📈 نتائج قوية لكبرى الشركات السعودية ترفع مؤشر تاسي', min: 0.02, max: 0.05, dur: 8 },
 ];
 
 // يطبّق أثر خبر على سهم: قفزة فورية + أثر مستمر يتلاشى على مدى عدة تِكّات
@@ -913,8 +940,8 @@ function triggerNews(game) {
   if (!live.length) return;
   const roll = Math.random();
 
-  if (roll < 0.13) {
-    // خبر يمسّ السوق كامل
+  if (roll < 0.20) {
+    // خبر يمسّ السوق كامل (اقتصادي/سياسي — يشمل الأخبار السعودية)
     const ev = pick(MARKET_NEWS);
     const sign = ev.type === 'pos' ? 1 : -1;
     for (const s of live) applyNewsImpact(game, s, sign, rnd(ev.min, ev.max), ev.dur);
@@ -1040,6 +1067,7 @@ function newBot(name, styleKey, diffKey) {
   b.diff = BOT_DIFFICULTY[diffKey] || BOT_DIFFICULTY.normal;
   b.connected = true;
   b.nextActAt = 0;
+  b.peak = {}; // أعلى سعر شهده كل مركز مفتوح (للوقف المتحرك)
   return b;
 }
 
@@ -1086,6 +1114,7 @@ function botTrade(game, bot, stock, action, qty) {
     const cost = qty * price;
     applyBuy(bot, stock, qty, price);
     recordFlow(stock, cost, 1);
+    bot.peak[stock.id] = Math.max(bot.peak[stock.id] || 0, stock.price); // بداية تتبّع القمة
   } else {
     const owned = bot.holdings[stock.id] || 0;
     qty = Math.min(qty, owned);
@@ -1093,6 +1122,7 @@ function botTrade(game, bot, stock, action, qty) {
     const price = stock.price * (1 - sp / 2);
     applySell(bot, stock, qty, price);
     if (!stock.bankrupt) recordFlow(stock, qty * price, -1);
+    if ((bot.holdings[stock.id] || 0) <= 0) delete bot.peak[stock.id]; // أُغلق المركز
   }
 }
 
@@ -1102,37 +1132,51 @@ function botAct(game, bot) {
   if (!live.length) return;
   const p = bot.botParams, d = bot.diff;
   const value = portfolioValue(game, bot);
+  const skilled = d.skill >= 0.62; // البوتات الماهرة "تركب" الموجة بوقف متحرّك بدل بيع مبكر
 
-  // 1) إدارة المراكز المفتوحة: جني الأرباح أو وقف الخسارة (الانضباط أعلى = وقف خسائر أفضل)
+  // 1) إدارة المراكز: الماهر يترك الرابح يركض (trailing stop)، والمبتدئ يبيع مبكراً
   for (const s of live) {
     const qty = bot.holdings[s.id] || 0;
     if (qty <= 0) continue;
     const avg = (bot.costBasis[s.id] || 0) / qty;
     if (avg <= 0) continue;
+    bot.peak[s.id] = Math.max(bot.peak[s.id] || s.price, s.price); // حدّث القمة
     const pl = (s.price - avg) / avg;
-    const target = p.target * (0.7 + d.discipline * 0.6);
-    const stop = p.stop * (0.6 + (1 - d.discipline) * 1.2); // انضباط أقل = وقف أوسع (يتمسّك بالخاسر)
-    if (pl >= target) botTrade(game, bot, s, 'sell', qty);
-    else if (pl <= -stop && Math.random() < d.discipline) botTrade(game, bot, s, 'sell', qty);
+    const stop = p.stop * (0.6 + (1 - d.discipline) * 1.2);
+
+    if (pl <= -stop && Math.random() < d.discipline) { botTrade(game, bot, s, 'sell', qty); continue; } // وقف خسارة
+
+    if (skilled) {
+      // وقف متحرّك: يبيع فقط لو ارتدّ السعر بنسبة معيّنة عن قمته بعد أن دخل في ربح
+      const peak = bot.peak[s.id] || s.price;
+      const dropFromPeak = (peak - s.price) / peak;
+      const trail = clamp(0.08 + s.volatility * 2.5, 0.08, 0.20); // أوسع للأسهم المتقلبة كي لا يُطرد مبكراً
+      if (pl > 0.04 && dropFromPeak >= trail) botTrade(game, bot, s, 'sell', qty);
+    } else {
+      // المبتدئ/العادي: هدف ثابت (يبيع الرابح بدري = نقطة ضعفه)
+      const target = p.target * (0.7 + d.discipline * 0.6);
+      if (pl >= target) botTrade(game, bot, s, 'sell', qty);
+    }
   }
 
-  // 2) فرصة فتح/زيادة مركز على أفضل سهم حسب إشارته
+  // 2) فتح/زيادة مركز على أفضل سهم — الماهر أكثر جرأة (حجم أكبر + تمويل)
   let best = null, bestScore = -1e9;
   for (const s of live) {
     const sc = botScore(bot, s);
     if (sc > bestScore) { bestScore = sc; best = s; }
   }
-  const buyThresh = 0.015 * (1.6 - d.skill); // الأمهر يتحرّك على إشارات أصغر
+  const buyThresh = 0.014 * (1.7 - d.skill); // الأمهر يدخل على إشارات أصغر وأسرع
   if (best && bestScore > buyThresh) {
     const already = (bot.holdings[best.id] || 0) * best.price;
-    const maxPos = value * p.sizeFrac * (0.6 + d.discipline * 0.6);
+    // الماهر يركّز رأس ماله أكثر بكثير في الفرص القوية
+    const maxPos = value * p.sizeFrac * (0.6 + d.skill * 1.3);
     const budget = Math.min(bot.cash, maxPos - already);
     if (budget > best.price) {
-      // استخدام التمويل بذكاء عند القناعة العالية (حسب الأسلوب والمهارة)
-      if (!bot.marginActive && bot.marginUsesLeft > 0 && bestScore > buyThresh * 2.2 && Math.random() < p.levProb * d.skill) {
+      // استخدام التمويل بجرأة أكبر كلما ارتفعت المهارة والقناعة
+      if (!bot.marginActive && bot.marginUsesLeft > 0 && bestScore > buyThresh * 1.8 && Math.random() < p.levProb * (0.6 + d.skill * 2.2)) {
         activateMargin(game, bot);
       }
-      const spend = budget * (0.5 + Math.random() * 0.5);
+      const spend = budget * (skilled ? (0.7 + Math.random() * 0.3) : (0.4 + Math.random() * 0.5));
       const qty = Math.floor(spend / (best.price * (1 + spreadFor(game) / 2)));
       if (qty > 0) botTrade(game, bot, best, 'buy', qty);
     }
@@ -1259,7 +1303,7 @@ function scheduleIPO(game, durationMs) {
     const profile = generateStockProfile(0.09);
     profile.liquidity = randInt(1, 3); // اكتتاب جديد = سيولة ضعيفة (يتحرك بسرعة)
     const ipoStock = {
-      id: 'ipo', name: 'شركة نصف الثلث', icon: '🎪',
+      id: 'ipo', name: 'نصف الثلث', icon: '🎪',
       sector: 'اكتتاب جديد', personality: 'Meme', dividend: false,
       ...profile,
       price, startPrice: price, prevPrice: price, changePct: 0,
@@ -1271,7 +1315,7 @@ function scheduleIPO(game, durationMs) {
     };
     assignRegime(ipoStock);
     game.stocks.push(ipoStock);
-    addNews(game, `🎉 اكتتاب مفاجئ! سهم "نصف الثلث" 🎪 يبدأ التداول الآن بسعر ${fmtDollar(price)}`, 'pos', ipoStock.id);
+    addNews(game, `🎉 اكتتاب مفاجئ! "نصف الثلث" 🎪 يبدأ التداول الآن بسعر ${fmtDollar(price)}`, 'pos', ipoStock.id);
     broadcast(game);
   }, delay);
 }
